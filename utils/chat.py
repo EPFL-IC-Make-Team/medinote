@@ -337,10 +337,12 @@ def extract(
     if not os.path.exists(template_path):
         raise ValueError('Template file not found.')
     with open(template_path) as f:
-        template = json.load(f)
+        template = json.dumps(json.load(f), indent=4)
     
+    # Get OpenAI credentials
     get_openai_credentials(keys_path)
 
+    # Extract the summary for each row
     for i, row in tqdm(dataframe.iterrows()):
 
         # Build prompt from instructions, note and dialogue
@@ -353,8 +355,7 @@ def extract(
             dialogue=dialogue,
             template=template,
         )
-        print('System prompt:', sys_prompt, '\nUser prompt:', usr_prompt) # TEST
-
+        
         # Extract the summary using OpenAI model
         summary = ask(
             sys_prompt,
@@ -362,10 +363,13 @@ def extract(
             model=model,
             max_tokens=2000
         )
-        print(summary) # TEST
-        break # TEST
-
         dataframe.iloc[i]['summary'] = summary
+
+        # FOR TESTING
+        if i == 10: 
+            dataframe.to_json(save_path, orient='records', lines=True)
+            break
+
         # Save the extracted note and dialogue (occasionally)
         if i % 50 == 0:
             dataframe.to_json(save_path, orient='records', lines=True)
