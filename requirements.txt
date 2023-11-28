@@ -1,0 +1,6 @@
+openai
+asyncio
+nest_asyncio
+pickle
+tiktoken
+sklearn

@@ -1,0 +1,37 @@
+{
+  "age": "The chronological age of the patient, typically measured in years.",
+  "gender": "The biological sex of the patient, such as male, female, or other.",
+  "visit_motivation": "The reason or purpose for the patient's visit to the doctor or healthcare professional, which could be due to specific symptoms, concerns, routine check-ups, etc.",
+  "list_of_symptoms": [
+    {
+      "name_of_the_symptom": "The specific symptom the patient is experiencing, such as fever, cough, headache, etc.",
+      "intensity_of_symptom": "The degree or severity of the symptom, often measured on a scale (mild, moderate, severe).",
+      "specific_attributes_of_the_symptom": {
+        "when_did_the_symptom_appear": "The onset or duration of the symptom.",
+        "location": "Where the symptom is localized or felt in the body.",
+        "quality_of": "The nature or characteristics of the symptom (e.g., stabbing pain, continuous ache, intermittent).",
+        "temporalisation": "Any factors that affect the symptom over time (e.g., worsens with movement, improves with rest).",
+        "behaviours_affecting_the_symptom": "Activities or actions that influence the symptom's severity or occurrence."
+      }
+    }
+  ],
+  "current_medication": "Any medications the patient is currently taking.",
+  "previous_diseases": "Medical conditions or illnesses the patient has experienced in the past.",
+  "previous_treatments": "Treatments or therapies the patient has undergone previously for any condition.",
+  "reaction_to_previous_treatments": "How the patient responded to past treatments or therapies.",
+  "recent_surgeries": "Any surgeries or surgical procedures the patient has undergone recently.",
+  "family_history": "Information about the patient's family members and their medical history.",
+  "recent_travels_and_level_of_care": "Details of any recent travels and the level of care received during those travels.",
+  "allergies": "Any known allergies the patient has to medications, foods, or environmental factors.",
+  "thymia": "The emotional or affective state of the patient, often related to mood disorders or emotional well-being.",
+  "socio_economic_context": "The patient's social and economic circumstances, which might influence health and access to care.",
+  "occupation": "The patient's current job or profession.",
+  "exercise_frequency": "How often the patient engages in physical exercise or activity.",
+  "nutrition": "Information about the patient's dietary habits and nutritional intake.",
+  "sexual_history": "Relevant details about the patient's sexual activities or history.",
+  "physiological_context": "Any additional physiological factors or conditions affecting the patient's health.",
+  "vaccination_history": "A record of the patient's vaccination status and history.",
+  "alcohol_consumption": "Details about the patient's alcohol intake.",
+  "drug_usage": "Any recreational or prescription drug use by the patient.",
+  "smoking_status": "Information regarding the patient's smoking habits or history."
+}

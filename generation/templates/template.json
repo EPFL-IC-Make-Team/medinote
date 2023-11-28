@@ -1,0 +1,57 @@
+{
+  "visit motivation": "",
+  "patient information" : {
+    "age": "",
+    "gender": "",
+    "family medical history": "",
+    "recent travels": "",
+    "socio economic context": "",
+    "occupation": "",
+    "exercise frequency": "",
+    "nutrition": "",
+    "sexual history": "",
+    "alcohol consumption": "",
+    "drug usage": "",
+    "smoking status": ""
+  },
+  "current symptoms": [
+    {
+      "name of symptom": "",
+      "intensity of symptom": "",
+      "location": "",
+      "when did the symptom appear": "",
+      "temporalisation": ""
+    }
+  ],
+  "previous diagnostics" :[
+    {
+      "name of condition" : "",
+      "severity" : "",
+      "prescribed treatment": "",
+      "reaction to treatment": ""
+    }
+  ],
+  "current medication": [
+    {
+      "name of medication": "",
+      "dosage": "",
+      "frequency": "",
+      "duration": "",
+      "reason for taking": ""
+    }
+  ],
+  "patient medical history" :
+  { 
+    "physiological context": "",
+    "psychological context": "",
+    "vaccination history": "",
+    "recent surgeries": "",
+    "allergies": ""
+  },
+  "visit conclusion" : 
+  {
+    "diagnosis": "",
+    "prescribed treatment": "",
+    "other specialist to consult" : ""
+  }
+}
