@@ -40,7 +40,7 @@ async def ask_chat(
         temperature: float
         ) -> Awaitable[Any]:
     ''' 
-    Prompts chat several times and returns the several answers, formatted and checked. 
+    Prompts chat once and returns one answer, formatted and checked. 
     Arguments:
         chat: chat function to which messages are passed
         messages: messages to send to the chat
@@ -48,11 +48,11 @@ async def ask_chat(
         temperature: temperature for the chat
     '''
     try:
-        answer =  await chat(messages = messages, temperature = temperature) #calls chat function
+        answer =  await chat(messages = messages, temperature = temperature)
         try:
             formatted_answer = formatting(answer) 
         except Exception as f:
-            raise ValueError("Wasn't answered in the right format"  )
+            raise ValueError("Wasn't answered in the right format")
         return formatted_answer
     except ValueError as e:
         print(f"\nException occurred: {e}")
@@ -66,7 +66,10 @@ async def openai_chat(
       max_retries: int = 5, 
       timeout: int = 70
       ) ->  Awaitable[str]:
-   ''' OpenAI chat function. '''
+   ''' 
+   OpenAI chat function. 
+   Bypass timeout by using retries. 
+   '''
 
    for _ in range(max_retries + 1):
     try:
@@ -302,7 +305,8 @@ def make_prompts(
     sys_prompt += "\n\nPatient Information Template:\n"
     if template is not None:
         sys_prompt += template
-    usr_prompt = "Now fill in the patient information following the template provided.\nIf a field is not mentioned in the dialogue, simply write \"feature\": None."
+    usr_prompt = "Now fill in the patient information following the template provided.\
+        \nIf a field is not mentioned in the dialogue, simply write \"feature\": None."
     return sys_prompt, usr_prompt
 
 

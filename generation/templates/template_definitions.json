@@ -1,56 +1,77 @@
 {
-    "visit motivation": "Reason for the patient's visit",
-    "patient information": {
-      "age": "Patient's age",
-      "sex": "Patient's sex",
-      "family medical history": "Information about family medical history",
-      "recent travels": "Details about patient's recent travels",
-      "socio economic context": "Patient's socioeconomic background",
-      "occupation": "Patient's occupation",
-      "exercise frequency": "Frequency of patient's exercise activity",
-      "nutrition": "Information about patient's nutrition",
-      "sexual history": "Relevant details about patient's sexual history",
-      "alcohol consumption": "Patient's alcohol consumption habits",
-      "drug usage": "Information about any drugs used by patient",
-      "smoking status": "Patient's smoking status"
-    },
-    "current symptoms": [
-      {
-        "name of symptom": "Specific symptom experienced by the patient",
-        "intensity of symptom": "Severity or intensity of the symptom",
-        "location": "Where the symptom is localized",
-        "when did the symptom appear": "Time of onset for the symptom",
-        "temporalisation": "Any specific timing patterns associated with the symptom"
-      }
-    ],
-    "previous diagnostics": [
-      {
-        "name of condition": "Previous medical conditions diagnosed",
-        "severity": "Severity level of the diagnosed condition",
-        "prescribed treatment": "Treatment prescribed for the condition",
-        "reaction to treatment": "Patient's reaction or response to the prescribed treatment"
-      }
-    ],
-    "current medication": [
-      {
-        "name of medication": "Medications currently being taken by the patient",
-        "dosage": "Amount or strength of the medication",
-        "frequency": "How often the medication is taken",
-        "duration": "The length of time the patient has been taking the medication",
-        "reason for taking": "The medical reason for taking each medication"
-      }
-    ],
-    "patient medical history": {
-      "physiological context": "Relevant physiological history of the patient",
-      "psychological context": "Relevant psychological history of the patient",
-      "vaccination history": "History of vaccinations received by the patient",
-      "recent surgeries": "Details about any recent surgeries undergone by the patient",
-      "allergies": "Any known allergies of the patient"
-    },
-    "visit conclusion": {
-      "diagnosis": "Final diagnosis or assessment from the visit",
-      "prescribed treatment": "Treatment plan prescribed for the patient",
-      "other specialist to consult": "Recommendation for consulting other specialists if needed"
+  "visit motivation": "Reason for the patient's visit",
+  "hospitalization": [
+    {
+      "reason": "Reason for hospitalization",
+      "date": "Date of hospitalization",
+      "duration": "Length of patient's hospital stay",
+      "department": "Department of hospital where patient was hospitalized"
     }
+  ],
+  "patient information": {
+    "age": "Patient's age",
+    "sex": "Patient's sex",
+    "ethnicity": "Patient's ethnicity",
+    "weight": "Patient's weight",
+    "height": "Patient's height",
+    "family medical history": "Information about family medical history",
+    "recent travels": "Details about patient's recent travels",
+    "socio economic context": "Patient's socioeconomic background",
+    "occupation": "Patient's occupation"
+  },
+  "patient medical history": {
+    "physiological context": "Relevant physiological history of the patient",
+    "psychological context": "Relevant psychological history of the patient",
+    "vaccination history": "History of vaccinations received by the patient",
+    "recent surgeries": "Details about any recent surgeries undergone by the patient",
+    "allergies": "Any known allergies of the patient",
+    "exercise frequency": "Frequency of patient's exercise activity",
+    "nutrition": "Information about patient's nutrition",
+    "sexual history": "Relevant details about patient's sexual history",
+    "alcohol consumption": "Patient's alcohol consumption habits",
+    "drug usage": "Information about any drugs used by patient",
+    "smoking status": "Patient's smoking status"
+  },
+  "symptoms": [
+    {
+      "name of symptom": "Specific symptom experienced by the patient",
+      "intensity of symptom": "Severity or intensity of the symptom",
+      "location": "Where the symptom is localized",
+      "when did the symptom appear": "Time of onset for the symptom",
+      "temporalisation": "Any specific timing patterns associated with the symptom",
+      "behaviours affecting the symptom": "Activities or actions that influence the symptom's severity or occurrence."
+    }
+  ],
+  "diagnoses": [
+    {
+      "condition": "Name of medical conditions diagnosed",
+      "severity": "Severity level of diagnosed condition",
+      "prescribed treatment": "Treatment prescribed for the condition"
+    }
+  ],
+  "treatments": [
+    {
+      "name": "Treatment prescribed to the patient",
+      "dosage": "Amount or strength of the treatment",
+      "frequency": "How often the treatment is taken",
+      "duration": "The length of time the patient should take the treatment",
+      "reason for taking": "The medical reason for taking the treatment",
+      "reaction to treatment": "Patient's reaction or response to the prescribed treatment"
+    }
+  ],
+  "medications": [
+    {
+      "name of medication": "Medications currently being taken by the patient",
+      "dosage": "Amount or strength of the medication",
+      "frequency": "How often the medication is taken",
+      "duration": "The length of time the patient has been taking the medication",
+      "reason for taking": "The medical reason for taking each medication"
+    }
+  ],
+  "discharge": {
+    "reason": "Reason motivating patient's discharge", 
+    "referral": "Details about any referrals",
+    "follow up": "Details about any follow up appointments",
+    "discharge summary": "Summary of patient's discharge"
   }
-  
+}

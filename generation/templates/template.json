@@ -1,12 +1,30 @@
 {
   "visit motivation": "",
-  "patient information" : {
+  "hospitalization": [
+    {
+      "reason": "",
+      "date": "",
+      "duration": "",
+      "department": ""
+    }
+  ],
+  "patient information": {
     "age": "",
-    "gender": "",
+    "sex": "",
+    "ethnicity": "",
+    "weight": "",
+    "height": "",
     "family medical history": "",
     "recent travels": "",
     "socio economic context": "",
-    "occupation": "",
+    "occupation": ""
+  },
+  "patient medical history": {
+    "physiological context": "",
+    "psychological context": "",
+    "vaccination history": "",
+    "recent surgeries": "",
+    "allergies": "",
     "exercise frequency": "",
     "nutrition": "",
     "sexual history": "",
@@ -14,24 +32,34 @@
     "drug usage": "",
     "smoking status": ""
   },
-  "current symptoms": [
+  "symptoms": [
     {
       "name of symptom": "",
       "intensity of symptom": "",
       "location": "",
       "when did the symptom appear": "",
-      "temporalisation": ""
+      "temporalisation": "",
+      "behaviours affecting the symptom": ""
     }
   ],
-  "previous diagnostics" :[
+  "diagnoses": [
     {
-      "name of condition" : "",
-      "severity" : "",
-      "prescribed treatment": "",
+      "condition": "",
+      "severity": "",
+      "prescribed treatment": ""
+    }
+  ],
+  "treatments": [
+    {
+      "name": "",
+      "dosage": "",
+      "frequency": "",
+      "duration": "",
+      "reason for taking": "",
       "reaction to treatment": ""
     }
   ],
-  "current medication": [
+  "medications": [
     {
       "name of medication": "",
       "dosage": "",
@@ -40,18 +68,10 @@
       "reason for taking": ""
     }
   ],
-  "patient medical history" :
-  { 
-    "physiological context": "",
-    "psychological context": "",
-    "vaccination history": "",
-    "recent surgeries": "",
-    "allergies": ""
-  },
-  "visit conclusion" : 
-  {
-    "diagnosis": "",
-    "prescribed treatment": "",
-    "other specialist to consult" : ""
+  "discharge": {
+    "reason": "", 
+    "referral": "",
+    "follow up": "",
+    "discharge summary": ""
   }
 }
