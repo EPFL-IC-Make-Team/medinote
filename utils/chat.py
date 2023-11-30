@@ -313,69 +313,83 @@ def make_prompts(
 def extract(
         model,
         template_path,
+        instruction_path,
+        data_path,
         save_path,
         keys_path='keys.json',
-        dataframe=None,
         use_notes=True, 
-        use_dialogues=True):
+        use_dialogues=False,
+        batch_size=32):
     '''
     Extracts the patient summary from the clinical note and/or dialogue. 
     Arguments: 
         model: OpenAI model name
-        template_path: path to the template file
-        save_path: path to save the dataframe
+        template_path: path to the template file (.json)
+        instruction_path: path to the instruction file (.txt)
+        data_path: path to the dataframe containing clinical notes and dialogues
+        save_path: path to save the dataframe containing extracted summaries
         keys_path: path to OpenAI API keys
         dataframe: dataframe containing the clinical notes and dialogues
         use_notes: whether to use the clinical notes
         use_dialogues: whether to use the dialogues
     '''
-    # Load data
+    # Load data (resume if save_path exists)
     if os.path.exists(save_path):
         dataframe = pd.read_json(save_path, lines=True, orient='records')
-    elif dataframe is None:
-        raise ValueError('Either dataframe or save_path must be specified.')
+    elif data_path is not None:
+        dataframe = pd.read_json(data_path, lines=True, orient='records')
+        dataframe['summary'] = None
     else:
-        dataframe['summary'] = ''
+        raise ValueError('Either save_path or data_path must be provided.')
 
-    # Load template
-    if not os.path.exists(template_path):
-        raise ValueError('Template file not found.')
-    with open(template_path) as f:
-        template = json.dumps(json.load(f), indent=4)
-    
     # Get OpenAI credentials
     get_openai_credentials(keys_path)
+    
+    # Load template
+    if not os.path.exists(template_path):
+        raise ValueError(f'Template file {template_path} not found.')
+    with open(template_path) as f:
+        template = json.dumps(json.load(f), indent=4)
 
-    # Extract the summary for each row
-    for i, row in tqdm(dataframe.iterrows()):
+    # Load instructions
+    if not os.path.exists(instruction_path):
+        raise ValueError(f'Instruction file {instruction_path} not found.')
+    with open(instruction_path) as f:
+        instruction = f.read()
 
-        # Build prompt from instructions, note and dialogue
-        instruction = "Given the provided clinical note and patient-doctor consultation dialogue, fill in the patient information template."
-        note = row['data'] if use_notes else None
-        dialogue = row['conversation'] if use_dialogues else None
-        sys_prompt, usr_prompt = make_prompts(
-            instruction=instruction,
-            note=note,
-            dialogue=dialogue,
-            template=template,
-        )
-        
-        # Extract the summary using OpenAI model
-        summary = ask(
-            sys_prompt,
-            usr_prompt,
+    # Load batch_size rows at a time
+    for i in tqdm(range(0, len(dataframe), batch_size)):
+        batch = dataframe.iloc[i:i+batch_size]
+        prompts = [
+            make_prompts(
+                instruction=instruction,
+                note=row['data'] if use_notes else None,
+                dialogue=row['conversation'] if use_dialogues else None,
+                template=template,
+            ) for _, row in batch.iterrows()
+        ]
+
+        # Batched call to OpenAI API (TO BE VERIFIED)
+        answers = generate_answers(
+            messages_list=[build_messages(*prompt) for prompt in prompts],
+            max_tokens=2000,
+            formatting=lambda x: x,
+            chat=chat_gpt_4_turbo,
             model=model,
-            max_tokens=2000
+            temperature=0.2
         )
-        dataframe.iloc[i]['summary'] = summary
+        print(answers)
+        
+        # Update dataframe
+        dataframe.loc[i:i+batch_size, 'summary'] = answers
 
-        # FOR TESTING
-        if i == 10: 
+        # FOR TESTING ONLY
+        if i == batch_size*3: 
             dataframe.to_json(save_path, orient='records', lines=True)
             break
 
         # Save the extracted note and dialogue (occasionally)
-        if i % 50 == 0:
+        if i % batch_size*10 == 0:
             dataframe.to_json(save_path, orient='records', lines=True)
 
     return dataframe
