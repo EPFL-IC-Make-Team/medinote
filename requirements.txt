@@ -1,6 +1,7 @@
 openai
 asyncio
 nest_asyncio
-pickle
 tiktoken
-sklearn
+scikit-learn
+pandas
+datasets

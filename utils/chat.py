@@ -73,7 +73,7 @@ async def openai_chat(
 
    for _ in range(max_retries + 1):
     try:
-      ans = openai.ChatCompletion.acreate(
+      ans = openai.chat.completion.acreate(
                   model=model_name,
                   messages=messages,
                   temperature=temperature
@@ -272,7 +272,7 @@ def ask(sys_prompt, user_prompt, model="gpt-4", max_tokens=2000):
     '''
     message=[{"role": "system", "content": sys_prompt},
              {"role": "user", "content": user_prompt}]
-    response = openai.ChatCompletion.create(
+    response = openai.chat.completions.create(
         model=model,
         messages=message,
         temperature=0.2,
@@ -372,7 +372,7 @@ def extract(
         # Batched call to OpenAI API (TO BE VERIFIED)
         answers = generate_answers(
             messages_list=[build_messages(*prompt) for prompt in prompts],
-            max_tokens=2000,
+            max_tokens=3000,
             formatting=lambda x: x,
             chat=chat_gpt_4_turbo,
             model=model,
