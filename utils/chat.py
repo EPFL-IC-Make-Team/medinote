@@ -14,14 +14,21 @@ from tqdm import tqdm
 import pandas as pd
 import json
 
-def get_openai_credentials(path='keys.json'):
+
+def get_openai_credentials(path='generation/keys.json'):
     if not os.path.exists(path):
         print('Please save your OpenAI API key and organization ID to keys.json')
         return
     with open(path) as f:
         keys = json.load(f)
-    openai.api_key = keys['api_key']
-    openai.organization = keys['organization']
+    
+    #openai.api_key = keys['api_key']
+    #openai.organization = keys['organization']
+    return keys
+
+keys = get_openai_credentials()
+
+openai_client = openai.AsyncOpenAI(api_key = keys['api_key'], organization = keys['organization'])
 
 def save_to_pickle(save_path, data):
     ''' Save data to pickle file '''
@@ -73,7 +80,7 @@ async def openai_chat(
 
    for _ in range(max_retries + 1):
     try:
-      ans = openai.chat.completion.acreate(
+      ans = openai_client.chat.completions.create(
                   model=model_name,
                   messages=messages,
                   temperature=temperature
@@ -264,7 +271,7 @@ def partition(messages_list, max_token_per_partition, model):
   return [(partition['messages_list'], partition['Total_nb_token']) for partition in partitions]
 
 
-def ask(sys_prompt, user_prompt, model="gpt-4", max_tokens=2000):
+"""def ask(sys_prompt, user_prompt, model="gpt-4", max_tokens=2000):
     ''' 
     One-time chat with OpenAI model.
     Prompt OpenAI model with system prompt + user prompt.
@@ -280,7 +287,7 @@ def ask(sys_prompt, user_prompt, model="gpt-4", max_tokens=2000):
         frequency_penalty=0.0
     )
     answer = response['choices'][0]['message']['content']
-    return answer
+    return answer"""
 
 def make_prompts(
         instruction, 
@@ -343,7 +350,7 @@ def extract(
         raise ValueError('Either save_path or data_path must be provided.')
 
     # Get OpenAI credentials
-    get_openai_credentials(keys_path)
+    #get_openai_credentials(keys_path) (Now useless)
     
     # Load template
     if not os.path.exists(template_path):
@@ -372,16 +379,15 @@ def extract(
         # Batched call to OpenAI API (TO BE VERIFIED)
         answers = generate_answers(
             messages_list=[build_messages(*prompt) for prompt in prompts],
-            max_tokens=3000,
+            max_tokens=10000,
             formatting=lambda x: x,
             chat=chat_gpt_4_turbo,
             model=model,
             temperature=0.2
         )
-        print(answers)
-        
+
         # Update dataframe
-        dataframe.loc[i:i+batch_size, 'summary'] = answers
+        dataframe.loc[i:i+batch_size-1, 'summary'] = answers
 
         # FOR TESTING ONLY
         if i == batch_size*3: 
