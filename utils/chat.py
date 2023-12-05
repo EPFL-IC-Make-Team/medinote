@@ -13,6 +13,7 @@ import os
 from tqdm import tqdm 
 import pandas as pd
 import json
+import argparse
 
 
 def get_openai_credentials(path='generation/keys.json'):
@@ -22,8 +23,8 @@ def get_openai_credentials(path='generation/keys.json'):
     with open(path) as f:
         keys = json.load(f)
     
-    #openai.api_key = keys['api_key']
-    #openai.organization = keys['organization']
+    openai.api_key = keys['api_key']
+    openai.organization = keys['organization']
     return keys
 
 keys = get_openai_credentials()
@@ -323,7 +324,6 @@ def extract(
         instruction_path,
         data_path,
         save_path,
-        keys_path='keys.json',
         use_notes=True, 
         use_dialogues=False,
         batch_size=32):
@@ -341,17 +341,18 @@ def extract(
         use_dialogues: whether to use the dialogues
     '''
     # Load data (resume if save_path exists)
+    if os.path.exists(data_path):
+        notechat = pd.read_json(data_path, lines=True, orient='records')
+        notechat['summary'] = None
+    else:
+        raise ValueError(f'Data file {data_path} not found.')
+    
     if os.path.exists(save_path):
         dataframe = pd.read_json(save_path, lines=True, orient='records')
-    elif data_path is not None:
-        dataframe = pd.read_json(data_path, lines=True, orient='records')
-        dataframe['summary'] = None
     else:
-        raise ValueError('Either save_path or data_path must be provided.')
+        dataframe = notechat.copy()
+        dataframe['summary'] = None
 
-    # Get OpenAI credentials
-    #get_openai_credentials(keys_path) (Now useless)
-    
     # Load template
     if not os.path.exists(template_path):
         raise ValueError(f'Template file {template_path} not found.')
@@ -399,3 +400,27 @@ def extract(
             dataframe.to_json(save_path, orient='records', lines=True)
 
     return dataframe
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--model', type=str, default='gpt-4-0613', help='OpenAI model name')
+    parser.add_argument('--template_path', type=str, default='data/template.json', help='Path to template file')
+    parser.add_argument('--instruction_path', type=str, default='data/instruction.txt', help='Path to instruction file')
+    parser.add_argument('--data_path', type=str, default='data/df.jsonl', help='Path to data file')
+    parser.add_argument('--save_path', type=str, default='data/df_extracted.jsonl', help='Path to save extracted data file')
+    parser.add_argument('--use_notes', type=bool, default=True, help='Whether to use clinical notes')
+    parser.add_argument('--use_dialogues', type=bool, default=False, help='Whether to use dialogues')
+    parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
+    args = parser.parse_args()
+
+    extract(
+        model=args.model,
+        template_path=args.template_path,
+        instruction_path=args.instruction_path,
+        data_path=args.data_path,
+        save_path=args.save_path,
+        use_notes=args.use_notes,
+        use_dialogues=args.use_dialogues,
+        batch_size=args.batch_size
+    )

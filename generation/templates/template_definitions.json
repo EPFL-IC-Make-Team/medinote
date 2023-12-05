@@ -42,30 +42,23 @@
       "behaviours affecting the symptom": "Activities or actions that influence the symptom's severity or occurrence."
     }
   ],
-  "diagnoses": [
+  "diagnosis tests": [
     {
-      "condition": "Name of medical conditions diagnosed",
+      "test": "Name of medical test performed to diagnose the condition",
       "severity": "Severity level of diagnosed condition",
-      "prescribed treatment": "Treatment prescribed for the condition"
+      "result": "Result or measurement of the medical test performed to diagnose the condition",
+      "condition": "Name of medical conditions diagnosed"
     }
   ],
   "treatments": [
     {
-      "name": "Treatment prescribed to the patient",
+      "name": "Treatment or medication prescribed to the patient",
+      "related condition": "Medical condition that the treatment is prescribed for",
       "dosage": "Amount or strength of the treatment",
       "frequency": "How often the treatment is taken",
       "duration": "The length of time the patient should take the treatment",
       "reason for taking": "The medical reason for taking the treatment",
       "reaction to treatment": "Patient's reaction or response to the prescribed treatment"
-    }
-  ],
-  "medications": [
-    {
-      "name of medication": "Medications currently being taken by the patient",
-      "dosage": "Amount or strength of the medication",
-      "frequency": "How often the medication is taken",
-      "duration": "The length of time the patient has been taking the medication",
-      "reason for taking": "The medical reason for taking each medication"
     }
   ],
   "discharge": {

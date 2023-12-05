@@ -44,28 +44,21 @@
   ],
   "diagnoses": [
     {
-      "condition": "",
+      "test": "",
       "severity": "",
-      "prescribed treatment": ""
+      "result": "",
+      "condition": ""
     }
   ],
   "treatments": [
     {
       "name": "",
+      "related condition": "",
       "dosage": "",
       "frequency": "",
       "duration": "",
       "reason for taking": "",
       "reaction to treatment": ""
-    }
-  ],
-  "medications": [
-    {
-      "name of medication": "",
-      "dosage": "",
-      "frequency": "",
-      "duration": "",
-      "reason for taking": ""
     }
   ],
   "discharge": {
