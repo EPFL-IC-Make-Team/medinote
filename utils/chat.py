@@ -334,7 +334,7 @@ def extract(
         template_path: path to the template file (.json)
         instruction_path: path to the instruction file (.txt)
         data_path: path to the dataframe containing clinical notes and dialogues
-        save_path: path to save the dataframe containing extracted summaries
+        save_path: path to save the dataframe containing extracted summaries (.jsonl)
         keys_path: path to OpenAI API keys
         dataframe: dataframe containing the clinical notes and dialogues
         use_notes: whether to use the clinical notes
@@ -343,16 +343,17 @@ def extract(
     # Load data (resume if save_path exists)
     if os.path.exists(data_path):
         notechat = pd.read_json(data_path, lines=True, orient='records')
-        notechat['summary'] = None
     else:
         raise ValueError(f'Data file {data_path} not found.')
     
+    # Create dataframe to save extracted summaries
     if os.path.exists(save_path):
         dataframe = pd.read_json(save_path, lines=True, orient='records')
+        ids = dataframe['id'].tolist()
     else:
-        dataframe = notechat.copy()
-        dataframe['summary'] = None
-
+        dataframe = pd.DataFrame(columns=['id', 'data', 'conversation', 'summary'])
+        ids = []
+        
     # Load template
     if not os.path.exists(template_path):
         raise ValueError(f'Template file {template_path} not found.')
@@ -366,8 +367,10 @@ def extract(
         instruction = f.read()
 
     # Load batch_size rows at a time
-    for i in tqdm(range(0, len(dataframe), batch_size)):
-        batch = dataframe.iloc[i:i+batch_size]
+    for i in tqdm(range(0, len(notechat), batch_size)):
+        batch = notechat.iloc[i:i+batch_size]
+        if batch['id'].tolist()[0] in ids:
+            continue
         prompts = [
             make_prompts(
                 instruction=instruction,
@@ -377,7 +380,7 @@ def extract(
             ) for _, row in batch.iterrows()
         ]
 
-        # Batched call to OpenAI API (TO BE VERIFIED)
+        # Batched call to OpenAI API
         answers = generate_answers(
             messages_list=[build_messages(*prompt) for prompt in prompts],
             max_tokens=10000,
@@ -386,18 +389,18 @@ def extract(
             model=model,
             temperature=0.2
         )
-
-        # Update dataframe
-        dataframe.loc[i:i+batch_size-1, 'summary'] = answers
-
-        # FOR TESTING ONLY
-        if i == batch_size*3: 
-            dataframe.to_json(save_path, orient='records', lines=True)
-            break
-
-        # Save the extracted note and dialogue (occasionally)
-        if i % batch_size*10 == 0:
-            dataframe.to_json(save_path, orient='records', lines=True)
+        batch_df = pd.DataFrame(
+            {
+                'id': batch['id'].tolist(),
+                'data': batch['data'].tolist(),
+                'conversation': batch['conversation'].tolist(),
+                'summary': answers
+            }
+        )
+        ids.extend(batch_df['id'].tolist())
+        dataframe = pd.concat([dataframe, batch_df], ignore_index=True)
+        with open(save_path, 'a') as f:
+            f.write(batch_df.to_json(orient='records', lines=True))
 
     return dataframe
 
