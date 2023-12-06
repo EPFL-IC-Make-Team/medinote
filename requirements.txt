@@ -5,3 +5,4 @@ tiktoken
 scikit-learn
 pandas
 datasets
+matplotlib
