@@ -1,17 +1,17 @@
 {
   "visit motivation": "Reason for the patient's visit",
-  "hospitalization": [
+  "admission": [
     {
-      "reason": "Reason for hospitalization",
-      "date": "Date of hospitalization",
-      "duration": "Length of patient's hospital stay",
-      "department": "Department of hospital where patient was hospitalized"
+      "reason": "Reason for admission to a care center",
+      "date": "Date of first admission",
+      "duration": "Length of patient's stay",
+      "center": "Name, type and details of care center"
     }
   ],
   "patient information": {
     "age": "Patient's age",
     "sex": "Patient's sex",
-    "ethnicity": "Patient's ethnicity",
+    "ethnicity": "Patient's ethnicity or nationality",
     "weight": "Patient's weight",
     "height": "Patient's height",
     "family medical history": "Information about family medical history",
@@ -23,31 +23,45 @@
     "physiological context": "Relevant physiological history of the patient",
     "psychological context": "Relevant psychological history of the patient",
     "vaccination history": "History of vaccinations received by the patient",
-    "recent surgeries": "Details about any recent surgeries undergone by the patient",
     "allergies": "Any known allergies of the patient",
     "exercise frequency": "Frequency of patient's exercise activity",
     "nutrition": "Information about patient's nutrition",
     "sexual history": "Relevant details about patient's sexual history",
     "alcohol consumption": "Patient's alcohol consumption habits",
-    "drug usage": "Information about any drugs used by patient",
+    "drug usage": "Information about any recreative drugs used by patient",
     "smoking status": "Patient's smoking status"
   },
+  "surgeries": [{
+    "reason": "Reason for surgery",
+    "Type": "Type of surgery performed",
+    "time": "Time of surgery",
+    "outcome": "Outcome of surgery",
+    "details": "Details about the surgery"
+  }],
   "symptoms": [
     {
       "name of symptom": "Specific symptom experienced by the patient",
       "intensity of symptom": "Severity or intensity of the symptom",
       "location": "Where the symptom is localized",
-      "when did the symptom appear": "Time of onset for the symptom",
+      "time": "Time of onset for the symptom",
       "temporalisation": "Any specific timing patterns associated with the symptom",
-      "behaviours affecting the symptom": "Activities or actions that influence the symptom's severity or occurrence."
+      "behaviours affecting the symptom": "Activities or actions that influence the symptom's severity or occurrence.",
+      "details": "All additional details about the symptom"
     }
   ],
+  "medical examinations": [{
+    "name" : "name of medical examination performed",
+    "result": "Result or measurement of the physical examination",
+    "details": "All additional details about the physical examination"
+  }],
   "diagnosis tests": [
     {
       "test": "Name of medical test performed to diagnose the condition",
       "severity": "Severity level of diagnosed condition",
       "result": "Result or measurement of the medical test performed to diagnose the condition",
-      "condition": "Name of medical conditions diagnosed"
+      "condition": "Name of medical conditions diagnosed",
+      "date": "Time when the medical test was performed",
+      "details": "All additional details about the medical test"
     }
   ],
   "treatments": [
@@ -55,10 +69,12 @@
       "name": "Treatment or medication prescribed to the patient",
       "related condition": "Medical condition that the treatment is prescribed for",
       "dosage": "Amount or strength of the treatment",
+      "Start date": "Date when the treatment was started",
       "frequency": "How often the treatment is taken",
       "duration": "The length of time the patient should take the treatment",
       "reason for taking": "The medical reason for taking the treatment",
-      "reaction to treatment": "Patient's reaction or response to the prescribed treatment"
+      "reaction to treatment": "Patient's reaction or response to the prescribed treatment",
+      "details": "All additional details about the treatment"
     }
   ],
   "discharge": {

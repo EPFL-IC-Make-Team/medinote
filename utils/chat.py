@@ -72,7 +72,7 @@ async def openai_chat(
       model_name : str, 
       temperature: float,
       max_retries: int = 5, 
-      timeout: int = 70
+      timeout: int = 500
       ) ->  Awaitable[str]:
    ''' 
    OpenAI chat function. 
@@ -326,7 +326,8 @@ def extract(
         save_path,
         use_notes=True, 
         use_dialogues=False,
-        batch_size=32):
+        batch_size=32,
+        nb_to_generate = None):
     '''
     Extracts the patient summary from the clinical note and/or dialogue. 
     Arguments: 
@@ -342,16 +343,19 @@ def extract(
     '''
     # Load data (resume if save_path exists)
     if os.path.exists(data_path):
-        notechat = pd.read_json(data_path, lines=True, orient='records')
+        if nb_to_generate is not None:
+            notechat = pd.read_json(data_path, lines=True, nrows = nb_to_generate ,orient='records')
+        else :
+            notechat = pd.read_json(data_path, lines=True, orient='records')
     else:
         raise ValueError(f'Data file {data_path} not found.')
     
     # Create dataframe to save extracted summaries
     if os.path.exists(save_path):
         dataframe = pd.read_json(save_path, lines=True, orient='records')
-        ids = dataframe['id'].tolist()
+        ids = dataframe['idx'].tolist()
     else:
-        dataframe = pd.DataFrame(columns=['id', 'data', 'conversation', 'summary'])
+        dataframe = pd.DataFrame(columns=['idx', 'data', 'conversation', 'summary'])
         ids = []
         
     # Load template
@@ -369,7 +373,7 @@ def extract(
     # Load batch_size rows at a time
     for i in tqdm(range(0, len(notechat), batch_size)):
         batch = notechat.iloc[i:i+batch_size]
-        if batch['id'].tolist()[0] in ids:
+        if batch['idx'].tolist()[0] in ids:
             continue
         prompts = [
             make_prompts(
@@ -383,7 +387,7 @@ def extract(
         # Batched call to OpenAI API
         answers = generate_answers(
             messages_list=[build_messages(*prompt) for prompt in prompts],
-            max_tokens=10000,
+            max_tokens=300000,
             formatting=lambda x: x,
             chat=chat_gpt_4_turbo,
             model=model,
@@ -391,16 +395,21 @@ def extract(
         )
         batch_df = pd.DataFrame(
             {
-                'id': batch['id'].tolist(),
+                'idx': batch['idx'].tolist(),
                 'data': batch['data'].tolist(),
                 'conversation': batch['conversation'].tolist(),
                 'summary': answers
             }
         )
-        ids.extend(batch_df['id'].tolist())
+        ids.extend(batch_df['idx'].tolist())
         dataframe = pd.concat([dataframe, batch_df], ignore_index=True)
         with open(save_path, 'a') as f:
             f.write(batch_df.to_json(orient='records', lines=True))
+            print('Saved')
+        
+        print("Batch done. Waiting 5 seconds...")
+        time.sleep(5)
+        print("Done.")
 
     return dataframe
 
