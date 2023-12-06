@@ -41,6 +41,10 @@ def load_from_pickle(filename):
     with open(filename, 'rb') as f:
         return pickle.load(f)
 
+def delete_pickle_file(file_path: str):
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
 async def ask_chat(
         chat: Callable[[List[dict]], Awaitable[str]],   # Chat function to which messages are passed
         messages: List[dict],                           # "List" but corresponds to only one call
@@ -138,7 +142,15 @@ async def dispatch_openai_requests(
         chat: chat function to which messages are passed
         formatting: function which converts raw (text) chat output to required format
     '''
-    nb_done = 0
+    if os.path.exists("safety_save.pkl"):
+        prev_res = load_from_pickle("safety_save.pkl")
+        print(f"Loaded {len(prev_res)} results from safety_save.pkl \n")
+        print (prev_res)
+    else:
+        prev_res = []
+    nb_done = len(prev_res)
+    res_list = prev_res.copy()
+    messages_list = messages_list[nb_done:]
     async def one_call(message: str):
         ''' One async call to ask_chat. '''
         nonlocal nb_done
@@ -148,22 +160,23 @@ async def dispatch_openai_requests(
             formatting = formatting,
             temperature = temperature)
         nb_done += 1
+        res_list.append(res)
         if nb_done % 20 == 0: #informative outputs
             print(nb_done)
+            save_to_pickle("safety_save.pkl", res_list)
         else: 
             print('.', end = '')
         return res 
         
     async_responses = [one_call(x) for x in messages_list] #multiple calls
-    
-    return await asyncio.gather(*async_responses)
+    new_responses = await asyncio.gather(*async_responses)
+
+    return prev_res + new_responses
 
 
 def generate_answers(messages_list: list[List[dict]],
-                     max_tokens: int,
                      formatting: Callable[[str],Any],
                      chat : Callable[[List[dict]], Awaitable[str]],
-                     model : str,
                      temperature : float
                      ) -> list[Any]:
     '''
@@ -175,27 +188,16 @@ def generate_answers(messages_list: list[List[dict]],
         chat: chat function to which messages are passed
         model: model name
     '''
-    messages_partitions = partition(messages_list=messages_list, max_token_per_partition=max_tokens, model = model) #builds a partitions which have total number of tokens < max_tokens
-    result = []
-    for i, (messages_lists_, nb_tokens) in enumerate(messages_partitions):
-        print(f"Partition {i+1}/{len(messages_partitions)}: {len(messages_lists_)} points and {nb_tokens} tokens")
-        loop = asyncio.get_event_loop()
-        nest_asyncio.apply()
-        start_time = time.time()
-        answers = loop.run_until_complete(
-           dispatch_openai_requests(
-              messages_lists_, 
-              formatting=formatting, 
-              chat=chat, 
-              temperature=temperature))
-        end_time = time.time()
-        time_taken = (end_time - start_time)
-        breaktime = max(int(60 - time_taken) + 2, 0.01) #time we wait before calling the api again
-        print(f"\nBreak for {breaktime} seconds.")
-        time.sleep(breaktime)
-        print("End of break.")
-        result += answers
-    return(result)
+    loop = asyncio.get_event_loop()
+    nest_asyncio.apply()
+    answers = loop.run_until_complete(
+        dispatch_openai_requests(
+            messages_list, 
+            formatting=formatting, 
+            chat=chat, 
+            temperature=temperature))
+    delete_pickle_file("safety_save.pkl")
+    return(answers)
 
 def num_tokens_from_messages(messages, model):
     '''
@@ -221,10 +223,10 @@ def num_tokens_from_messages(messages, model):
         tokens_per_message = 4  # every message follows <|start|>{role/name}\n{content}<|end|>\n
         tokens_per_name = -1  # if there's a name, the role is omitted
     elif "gpt-3.5-turbo" in model:
-        print("Warning: gpt-3.5-turbo may update over time. Returning num tokens assuming gpt-3.5-turbo-0613.")
+        #print("Warning: gpt-3.5-turbo may update over time. Returning num tokens assuming gpt-3.5-turbo-0613.")
         return num_tokens_from_messages(messages, model="gpt-3.5-turbo-0613")
     elif "gpt-4" in model:
-        print("Warning: gpt-4 may update over time. Returning num tokens assuming gpt-4-0613.")
+        #print("Warning: gpt-4 may update over time. Returning num tokens assuming gpt-4-0613.")
         return num_tokens_from_messages(messages, model="gpt-4-0613")
     else:
         raise NotImplementedError(
@@ -242,10 +244,6 @@ def num_tokens_from_messages(messages, model):
     num_tokens += 3  # every reply is primed with <|start|>assistant<|message|>
     return num_tokens
 
-def new_partition(messages : List[dict], msg_len: int) : 
-    return {"messages_list" : [messages], 
-            "Total_nb_token" : msg_len}
-
 def build_messages(system_prompt: str, built_user_prompt: str): 
     ''' Build messages in the right format given system prompt and user prompt. '''
     return [
@@ -253,23 +251,28 @@ def build_messages(system_prompt: str, built_user_prompt: str):
         {"role": "user", "content": built_user_prompt}
     ]
 
-def partition(messages_list, max_token_per_partition, model): 
-  ''' Build most optimal partitions given max number of tokens, model and messages. '''
-  partitions = []
-  for messages in messages_list:
-      msg_len = num_tokens_from_messages(messages, model)
-      if len(partitions) == 0 : partitions.append(new_partition(messages, msg_len))
-      else : 
-        current_partion = partitions[-1]
-        if current_partion["Total_nb_token"] + msg_len <= max_token_per_partition : 
-            current_partion["messages_list"].append(messages) 
-            current_partion["Total_nb_token"] += msg_len
-        else: partitions.append(new_partition(messages, msg_len))
+def new_sub_batch(row, msg_len): 
+  return {"sub_batch": pd.DataFrame([row]) , "Total_nb_token": msg_len}
 
-  print(f"Created {len(partitions)} partitions with token number:" +\
-         f"{[partition['Total_nb_token'] for partition in partitions]}")
+def partition(dataframe, max_token_per_partition, model): 
+  ''' Build most optimal partitions given max number of tokens, model and messages. '''
+  sub_batches = []
+  for _, row in dataframe.iterrows():
+      msg_len = num_tokens_from_messages(row['messages'], model)
+      batch_len = len(sub_batches)
+      if batch_len == 0 : 
+          sub_batches.append(new_sub_batch(row, msg_len))
+      else : 
+        current_partion = sub_batches[-1]
+        if current_partion["Total_nb_token"] + msg_len <= max_token_per_partition : 
+            current_partion["sub_batch"] = pd.concat([current_partion["sub_batch"], pd.DataFrame([row])], ignore_index=True)
+            current_partion["Total_nb_token"] += msg_len
+        else: sub_batches.append(new_sub_batch(row, msg_len))
+
+  print(f"Created {len(sub_batches)} sub-batches with token number:" +\
+         f"{[(sub_batch['sub_batch'].shape[0],sub_batch['Total_nb_token']) for sub_batch in sub_batches]}")
   
-  return [(partition['messages_list'], partition['Total_nb_token']) for partition in partitions]
+  return [(sb['sub_batch'], sb['Total_nb_token']) for sb in sub_batches]
 
 
 """def ask(sys_prompt, user_prompt, model="gpt-4", max_tokens=2000):
@@ -320,13 +323,14 @@ def make_prompts(
 
 def extract(
         model,
+        chat,
         template_path,
         instruction_path,
         data_path,
         save_path,
+        max_tokens,
         use_notes=True, 
         use_dialogues=False,
-        batch_size=32,
         nb_to_generate = None):
     '''
     Extracts the patient summary from the clinical note and/or dialogue. 
@@ -344,20 +348,24 @@ def extract(
     # Load data (resume if save_path exists)
     if os.path.exists(data_path):
         if nb_to_generate is not None:
-            notechat = pd.read_json(data_path, lines=True, nrows = nb_to_generate ,orient='records')
+            notechat_batch = pd.read_json(data_path, lines=True, nrows = nb_to_generate ,orient='records')
         else :
-            notechat = pd.read_json(data_path, lines=True, orient='records')
+            notechat_batch = pd.read_json(data_path, lines=True, orient='records')
     else:
         raise ValueError(f'Data file {data_path} not found.')
     
     # Create dataframe to save extracted summaries
     if os.path.exists(save_path):
         dataframe = pd.read_json(save_path, lines=True, orient='records')
-        ids = dataframe['idx'].tolist()
+        ids_done = dataframe['idx'].tolist()
     else:
         dataframe = pd.DataFrame(columns=['idx', 'data', 'conversation', 'summary'])
-        ids = []
-        
+        ids_done = []
+
+    if len(ids_done) > 0:
+        print(f'{len(ids_done)} generations already done. Skipping them.')
+        notechat_batch = notechat_batch[~notechat_batch['idx'].isin(ids_done)]
+
     # Load template
     if not os.path.exists(template_path):
         raise ValueError(f'Template file {template_path} not found.')
@@ -370,47 +378,48 @@ def extract(
     with open(instruction_path) as f:
         instruction = f.read()
 
-    # Load batch_size rows at a time
-    for i in tqdm(range(0, len(notechat), batch_size)):
-        batch = notechat.iloc[i:i+batch_size]
-        if batch['idx'].tolist()[0] in ids:
-            continue
-        prompts = [
+    prompts = [
             make_prompts(
                 instruction=instruction,
                 note=row['data'] if use_notes else None,
                 dialogue=row['conversation'] if use_dialogues else None,
                 template=template,
-            ) for _, row in batch.iterrows()
+            ) for _, row in notechat_batch.iterrows()
         ]
+    
+    # Build messages
+    notechat_batch['messages'] =[build_messages(*prompt) for prompt in prompts]
 
-        # Batched call to OpenAI API
+    #Creating sub_batches:
+    print(max_tokens)
+    sub_batches = partition(dataframe = notechat_batch, max_token_per_partition=max_tokens,model = model) #builds a partitions which have total number of tokens < max_tokens
+    
+    notechat_batch.drop(columns = ["messages"], inplace = True)
+
+    for i ,(sub_batch_df, nb_tokens) in enumerate(sub_batches):
+        print(f"Sub_batch {i+1}/{len(sub_batches)}: {sub_batch_df.shape[0]} calls, {nb_tokens} tokens")
+        
+        start_time = time.time()
         answers = generate_answers(
-            messages_list=[build_messages(*prompt) for prompt in prompts],
-            max_tokens=300000,
+            messages_list = sub_batch_df['messages'].tolist(),
             formatting=lambda x: x,
-            chat=chat_gpt_4_turbo,
-            model=model,
+            chat=chat,
             temperature=0.2
         )
-        batch_df = pd.DataFrame(
-            {
-                'idx': batch['idx'].tolist(),
-                'data': batch['data'].tolist(),
-                'conversation': batch['conversation'].tolist(),
-                'summary': answers
-            }
-        )
-        ids.extend(batch_df['idx'].tolist())
-        dataframe = pd.concat([dataframe, batch_df], ignore_index=True)
+        sub_batch_df['summary'] = answers
+        sub_batch_df.drop(columns = ["messages"], inplace = True)
+        ids_done.extend(sub_batch_df['idx'].tolist())
+        dataframe = pd.concat([dataframe, sub_batch_df], ignore_index=True)
         with open(save_path, 'a') as f:
-            f.write(batch_df.to_json(orient='records', lines=True))
-            print('Saved')
+            f.write(sub_batch_df.to_json(orient='records', lines=True))
+            print(f'\nSub-batch {i+1} Saved (size {sub_batch_df.shape[0]})\n')
         
-        print("Batch done. Waiting 5 seconds...")
-        time.sleep(5)
-        print("Done.")
-
+        end_time = time.time()
+        time_taken = (end_time - start_time)
+        breaktime = max(int(60 - time_taken) + 2, 5) #time we wait before calling the api again
+        print(f"\nBreak for {breaktime} seconds.")
+        time.sleep(breaktime)
+        print("End of break.")
     return dataframe
 
 
