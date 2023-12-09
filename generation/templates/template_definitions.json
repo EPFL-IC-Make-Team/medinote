@@ -5,7 +5,7 @@
       "reason": "Reason for admission to a care center",
       "date": "Date of first admission",
       "duration": "Length of patient's stay",
-      "center": "Name, type and details of care center"
+      "care center details": "Any details of care center the patient was admitted to (e.g. oncology clinic)"
     }
   ],
   "patient information": {
@@ -43,7 +43,7 @@
       "name of symptom": "Specific symptom experienced by the patient",
       "intensity of symptom": "Severity or intensity of the symptom",
       "location": "Where the symptom is localized",
-      "time": "Time of onset for the symptom",
+      "time": "Any temporal details about when the symtom appears",
       "temporalisation": "Any specific timing patterns associated with the symptom",
       "behaviours affecting the symptom": "Activities or actions that influence the symptom's severity or occurrence.",
       "details": "All additional details about the symptom"
@@ -60,7 +60,7 @@
       "severity": "Severity level of diagnosed condition",
       "result": "Result or measurement of the medical test performed to diagnose the condition",
       "condition": "Name of medical conditions diagnosed",
-      "date": "Time when the medical test was performed",
+      "time": "Any temporal details about when the diagnosis test was performed",
       "details": "All additional details about the medical test"
     }
   ],
@@ -69,7 +69,7 @@
       "name": "Treatment or medication prescribed to the patient",
       "related condition": "Medical condition that the treatment is prescribed for",
       "dosage": "Amount or strength of the treatment",
-      "Start date": "Date when the treatment was started",
+      "time": "Any temporal details about when the treatment was performed",
       "frequency": "How often the treatment is taken",
       "duration": "The length of time the patient should take the treatment",
       "reason for taking": "The medical reason for taking the treatment",

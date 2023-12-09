@@ -14,6 +14,7 @@ from tqdm import tqdm
 import pandas as pd
 import json
 import argparse
+import shutil
 
 
 def get_openai_credentials(path='generation/keys.json'):
@@ -145,7 +146,6 @@ async def dispatch_openai_requests(
     if os.path.exists("safety_save.pkl"):
         prev_res = load_from_pickle("safety_save.pkl")
         print(f"Loaded {len(prev_res)} results from safety_save.pkl \n")
-        print (prev_res)
     else:
         prev_res = []
     nb_done = len(prev_res)
@@ -196,7 +196,6 @@ def generate_answers(messages_list: list[List[dict]],
             formatting=formatting, 
             chat=chat, 
             temperature=temperature))
-    delete_pickle_file("safety_save.pkl")
     return(answers)
 
 def num_tokens_from_messages(messages, model):
@@ -257,7 +256,7 @@ def new_sub_batch(row, msg_len):
 def partition(dataframe, max_token_per_partition, model): 
   ''' Build most optimal partitions given max number of tokens, model and messages. '''
   sub_batches = []
-  for _, row in dataframe.iterrows():
+  for _, row in tqdm(dataframe.iterrows(), total = dataframe.shape[0]):
       msg_len = num_tokens_from_messages(row['messages'], model)
       batch_len = len(sub_batches)
       if batch_len == 0 : 
@@ -274,24 +273,6 @@ def partition(dataframe, max_token_per_partition, model):
   
   return [(sb['sub_batch'], sb['Total_nb_token']) for sb in sub_batches]
 
-
-"""def ask(sys_prompt, user_prompt, model="gpt-4", max_tokens=2000):
-    ''' 
-    One-time chat with OpenAI model.
-    Prompt OpenAI model with system prompt + user prompt.
-    Default model: gpt-4 (8K context length)
-    '''
-    message=[{"role": "system", "content": sys_prompt},
-             {"role": "user", "content": user_prompt}]
-    response = openai.chat.completions.create(
-        model=model,
-        messages=message,
-        temperature=0.2,
-        max_tokens=max_tokens,
-        frequency_penalty=0.0
-    )
-    answer = response['choices'][0]['message']['content']
-    return answer"""
 
 def make_prompts(
         instruction, 
@@ -346,6 +327,7 @@ def extract(
         use_dialogues: whether to use the dialogues
     '''
     # Load data (resume if save_path exists)
+    print("Loading Data...")
     if os.path.exists(data_path):
         if nb_to_generate is not None:
             notechat_batch = pd.read_json(data_path, lines=True, nrows = nb_to_generate ,orient='records')
@@ -355,6 +337,7 @@ def extract(
         raise ValueError(f'Data file {data_path} not found.')
     
     # Create dataframe to save extracted summaries
+    print("Looking for already generated summaries...")
     if os.path.exists(save_path):
         dataframe = pd.read_json(save_path, lines=True, orient='records')
         ids_done = dataframe['idx'].tolist()
@@ -367,37 +350,41 @@ def extract(
         notechat_batch = notechat_batch[~notechat_batch['idx'].isin(ids_done)]
 
     # Load template
+    print("Loading template...")
     if not os.path.exists(template_path):
         raise ValueError(f'Template file {template_path} not found.')
     with open(template_path) as f:
         template = json.dumps(json.load(f), indent=4)
 
     # Load instructions
+    print("Loading instructions...")
     if not os.path.exists(instruction_path):
         raise ValueError(f'Instruction file {instruction_path} not found.')
     with open(instruction_path) as f:
         instruction = f.read()
 
+    print("Building prompts...")
     prompts = [
             make_prompts(
                 instruction=instruction,
                 note=row['data'] if use_notes else None,
                 dialogue=row['conversation'] if use_dialogues else None,
                 template=template,
-            ) for _, row in notechat_batch.iterrows()
+            ) for _, row in tqdm(notechat_batch.iterrows(), total=notechat_batch.shape[0])
         ]
     
     # Build messages
-    notechat_batch['messages'] =[build_messages(*prompt) for prompt in prompts]
+    print("Building messages...")
+    notechat_batch['messages'] =[build_messages(*prompt) for prompt in tqdm(prompts, total=len(prompts))]
 
     #Creating sub_batches:
-    print(max_tokens)
+    print("Creating sub-batches...")
     sub_batches = partition(dataframe = notechat_batch, max_token_per_partition=max_tokens,model = model) #builds a partitions which have total number of tokens < max_tokens
     
     notechat_batch.drop(columns = ["messages"], inplace = True)
 
     for i ,(sub_batch_df, nb_tokens) in enumerate(sub_batches):
-        print(f"Sub_batch {i+1}/{len(sub_batches)}: {sub_batch_df.shape[0]} calls, {nb_tokens} tokens")
+        print(f"Sub_batch {i+1}/{len(sub_batches)}: {sub_batch_df.shape[0]} calls, {nb_tokens} total tokens: {nb_tokens/1000 * 0.01}$")
         
         start_time = time.time()
         answers = generate_answers(
@@ -410,9 +397,14 @@ def extract(
         sub_batch_df.drop(columns = ["messages"], inplace = True)
         ids_done.extend(sub_batch_df['idx'].tolist())
         dataframe = pd.concat([dataframe, sub_batch_df], ignore_index=True)
+
+        # Make a copy of the current file
+        shutil.copyfile(save_path, f'{save_path[:-6]}{i}.jsonl')
+
         with open(save_path, 'a') as f:
             f.write(sub_batch_df.to_json(orient='records', lines=True))
             print(f'\nSub-batch {i+1} Saved (size {sub_batch_df.shape[0]})\n')
+            delete_pickle_file("safety_save.pkl")
         
         end_time = time.time()
         time_taken = (end_time - start_time)
