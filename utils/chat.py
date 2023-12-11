@@ -393,6 +393,7 @@ def extract(
             chat=chat,
             temperature=0.2
         )
+<<<<<<< HEAD
         sub_batch_df['summary'] = answers
         sub_batch_df.drop(columns = ["messages"], inplace = True)
         ids_done.extend(sub_batch_df['idx'].tolist())
@@ -412,6 +413,21 @@ def extract(
         print(f"\nBreak for {breaktime} seconds.")
         time.sleep(breaktime)
         print("End of break.")
+=======
+        batch_df = pd.DataFrame(
+            {
+                'id': batch['id'].tolist(),
+                'data': batch['data'].tolist(),
+                'conversation': batch['conversation'].tolist(),
+                'summary': answers
+            }
+        )
+        ids.extend(batch_df['id'].tolist())
+        dataframe = pd.concat([dataframe, batch_df], ignore_index=True)
+        with open(save_path, 'a') as f:
+            f.write(batch_df.to_json(orient='records', lines=True))
+ 
+>>>>>>> 1f26b28 (Added instructions)
     return dataframe
 
 
