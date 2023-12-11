@@ -13,10 +13,10 @@ def get_eval_dict(pred_dict, gold_dict, string_match_score):
             raise ValueError(f"type mismatch: {gold.type} != {pred.type}")
 
         if gold.type == list:
-            eval_dict[field] = [eval(pred_, gold_, string_match_score) for pred_, gold_ in zip(pred, gold)]
+            eval_dict[field] = [get_eval_dict(pred_, gold_, string_match_score) for pred_, gold_ in zip(pred, gold)]
         
         if gold.type == dict:
-            eval_dict[field] = eval(pred, gold, string_match_score)
+            eval_dict[field] = get_eval_dict(pred, gold, string_match_score)
         
         if gold.type == str and pred.type == str:
             if gold == "None":

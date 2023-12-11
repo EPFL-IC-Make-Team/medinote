@@ -1,0 +1,3 @@
+[submodule "meditron"]
+	path = meditron
+	url = https://github.com/epfLLM/meditron/

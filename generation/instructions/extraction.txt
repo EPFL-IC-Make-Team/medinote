@@ -1,4 +1,3 @@
 Given the provided clinical note, extract the corresponding patient summary following the template provided. 
-Be as thorough as possible to extract all the information from the clinical note, but do not add any new information. 
-Make sure all details mentioned in the clinical note appear in your output.
+Make sure to extract all the information from the clinical note into the template, but do not add any new information. 
 If a field is not mentioned, simply write "feature": None.
