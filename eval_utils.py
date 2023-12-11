@@ -31,15 +31,6 @@ def get_eval_dict(pred_dict, gold_dict, string_match_score):
         
         else :
             raise ValueError(f"unexpected type: {gold.type}")
-        
-        eval_dict['None accurracy'] = eval_dict[field]
 
     return eval_dict
-
-
-
-        
-
-
-        
         
