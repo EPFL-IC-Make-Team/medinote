@@ -136,12 +136,12 @@ def flatten_and_match_dicts(gold_dict, pred_dict, match_score, parent_key=''):
 
 def get_evaluation_dict(flattened_matched_dict, evaluation_scores):
     evaluation_dict = {}
-    evaluation_dict{'missing_keys'} = 0
-    evaluation_dict{'additional_keys'} = 0
-    evaluation_dict{'accurate_nones'} = 0
-    evaluation_dict{'accurate_not_nones'} = 0
-    evaluation_dict{'non_accurate_nones'} = 0
-    evaluation_dict{'non_accurate_none_nones'} = 0
+    evaluation_dict['missing_keys'] = 0
+    evaluation_dict['additional_keys'] = 0
+    evaluation_dict['accurate_nones'] = 0
+    evaluation_dict['accurate_not_nones'] = 0
+    evaluation_dict['non_accurate_nones'] = 0
+    evaluation_dict['non_accurate_none_nones'] = 0
     for key, (gold, pred) in flattened_matched_dict.items():
         if gold == no_such_key:
             evaluation_dict['additional_keys'] += 1
@@ -152,7 +152,7 @@ def get_evaluation_dict(flattened_matched_dict, evaluation_scores):
         if gold == none_field:
             if pred == none_field:
                 evaluation_dict['accurate_nones'] += 1
-                evaluation_dict[key] = None_Match
+                evaluation_dict[key] = none_match
             else:
                 evaluation_dict[key] = (gold, pred)
                 evaluation_dict['non_accurate_none_nones'] += 1
@@ -165,6 +165,26 @@ def get_evaluation_dict(flattened_matched_dict, evaluation_scores):
                 accurate_not_nones += 1
     
     return evaluation_dict
+
+def only_non_none_eval_dict(evaluation_dict):
+    return {k: v for k, v in evaluation_dict.items() if isinstance(v, dict)} #keeping only the non-none values
+
+def build_gpt_4_scoring_dataset(evaluation_dicts_df):
+    gpt_4_scoring_dataset = evaluation_dicts_df[['idxs', 'eval_dict']]
+    gpt_4_scoring_dataset['eval_dict'] = build_gpt_4_scoring_dataset['eval_dict'].apply(lambda x: only_non_none_eval_dict(x))
+    gpt_4_scoring_dataset['eval_dict'] = build_gpt_4_scoring_dataset['eval_dict'].apply(lambda x: {k: v['gpt_4'] for k, v in x.items()})
+    gpt_4_scoring_dataset = build_gpt_4_scoring_dataset.explode('eval_dict')
+    gpt_4_scoring_dataset['key'] = build_gpt_4_scoring_dataset['eval_dict'].apply(lambda x: x[0])
+    gpt_4_scoring_dataset['gold'] = build_gpt_4_scoring_dataset['eval_dict'].apply(lambda x: x[1][0])
+    gpt_4_scoring_dataset['pred'] = build_gpt_4_scoring_dataset['eval_dict'].apply(lambda x: x[1][1])
+    gpt_4_scoring_dataset.drop(columns=['eval_dict'])
+
+    return build_gpt_4_scoring_dataset
+
+def input_gpt_4_scores(evaluation_dicts_df, gpt_4_scoring_dataset):
+    gpt_4_scoring_dataset = gpt_4_scoring_dataset.groupby('idxs').agg({'key': list, 'score': list})
+    evaluation_dicts_df = evaluation_dicts_df.merge(gpt_4_scoring_dataset, on='idxs')
+    evaluation_dicts_df['eval_dict'] = evaluation_dicts_df[['eval_dict']].apply(lambda x: {k: v for k, v in x['eval_dict'].items() if k in x['key']}, axis=1)
     
 
 
