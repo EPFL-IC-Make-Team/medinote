@@ -1,11 +1,11 @@
 {
   "visit motivation": "",
-  "hospitalization": [
+  "admission": [
     {
       "reason": "",
       "date": "",
       "duration": "",
-      "department": ""
+      "care center details": ""
     }
   ],
   "patient information": {
@@ -23,7 +23,6 @@
     "physiological context": "",
     "psychological context": "",
     "vaccination history": "",
-    "recent surgeries": "",
     "allergies": "",
     "exercise frequency": "",
     "nutrition": "",
@@ -32,22 +31,37 @@
     "drug usage": "",
     "smoking status": ""
   },
+  "surgeries": [{
+    "reason": "",
+    "Type": "",
+    "time": "",
+    "outcome": "",
+    "details": ""
+  }],
   "symptoms": [
     {
       "name of symptom": "",
       "intensity of symptom": "",
       "location": "",
-      "when did the symptom appear": "",
+      "time": "",
       "temporalisation": "",
-      "behaviours affecting the symptom": ""
+      "behaviours affecting the symptom": "",
+      "details": ""
     }
   ],
-  "diagnoses": [
+  "medical examinations": [{
+    "name" : "",
+    "result": "",
+    "details": ""
+  }],
+  "diagnosis tests": [
     {
       "test": "",
       "severity": "",
       "result": "",
-      "condition": ""
+      "condition": "",
+      "time": "",
+      "details": ""
     }
   ],
   "treatments": [
@@ -55,10 +69,12 @@
       "name": "",
       "related condition": "",
       "dosage": "",
+      "time": "",
       "frequency": "",
       "duration": "",
       "reason for taking": "",
-      "reaction to treatment": ""
+      "reaction to treatment": "",
+      "details": ""
     }
   ],
   "discharge": {
