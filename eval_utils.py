@@ -1,36 +1,171 @@
-import jsonlines
+import numpy as np
 
 none_match  = "None_Match"
-none_mismatch = "None_Mismatch"
+no_such_key = "no_such_key"
+none_field = "None"
 
-def get_eval_dict(pred_dict, gold_dict, string_match_score):
-    eval_dict = {}
-    for (field, gold), (pred_field, pred) in zip(gold_dict.items(), pred_dict.items()):
-        if field != pred_field:
-            raise ValueError(f"field mismatch: {field} != {pred_field}")
-        
-        if gold.type != pred.type:
-            raise ValueError(f"type mismatch: {gold.type} != {pred.type}")
+def evaluation_scores(gold, pred):
+    return {
+        'bleu' : bleu_score(gold, pred),
+        'rouge' : rouge_score(gold, pred),
+        'gpt_4' : (gold, pred) #We strore the string for now, socre will be calculated later
+    }
 
-        if gold.type == list:
-            eval_dict[field] = [get_eval_dict(pred_, gold_, string_match_score) for pred_, gold_ in zip(pred, gold)]
-        
-        if gold.type == dict:
-            eval_dict[field] = get_eval_dict(pred, gold, string_match_score)
-        
-        if gold.type == str and pred.type == str:
-            if gold == "None":
-                if pred == "None":
-                    eval_dict[field] = none_match
-                else :
-                    eval_dict[field] = none_mismatch
-            if pred == "None":
-                eval_dict[field] = none_mismatch
-            else:
-                eval_dict[field] = string_match_score(pred, gold)
-        
+def bert_match_score(gold, pred):
+    pass
+
+def random__match_score(gold, pred): #for testing only
+    return np.random.random()
+
+def match_pred_list(gold_list, pred_list, match_score):
+    if len(gold_list) == 1 and len(pred_list) == 1:
+        return gold_list, pred_list
+    
+    if len(gold_list) == 0:
+        matched_gold = [{}] * len(pred_list)
+    if len(pred_list) == 0:
+        matched_pred = [{}] * len(gold_list)
+
+    pred_list_ = pred_list.copy()
+    matched_pred = []
+    matched_gold = gold_list.copy()
+
+    # Iterate through each element in gold_list
+    
+    for gold_item in gold_list:
+        max_score = None
+        best_match_index = -1
+
+        # Find the best match in pred_list
+        if len(pred_list_) > 0:
+            for i, pred_item in enumerate(pred_list_):
+                gold_string = ", ".join(str(value) for value in gold_item.values() if value is not None)
+                pred_string = ", ".join(str(value) for value in pred_item.values() if value is not None)
+                score = match_score(gold_string, pred_string)
+                if max_score is None or score > max_score:
+                    max_score = score
+                    best_match_index = i
+
+            matched_pred.append(pred_list[best_match_index])
+            pred_list_.pop(best_match_index)
+
+    if len(pred_list_) > 0:
+        matched_gold += [{}] * len(pred_list)
+        matched_pred += pred_list_
+    else:
+        matched_pred.extend([{}] * (len(matched_gold) - len(matched_pred)))
+
+    return matched_gold, matched_pred
+
+
+def flatten_and_match_dicts(gold_dict, pred_dict, match_score, parent_key=''):
+    flattened_dict_items = []
+    for gold_key, gold_value in gold_dict.items():
+        if gold_key in pred_dict.keys():
+            if isinstance(gold_value, str):
+                    flattened_dict_items.append((f"{parent_key}{gold_key}",
+                                                (gold_value, pred_dict[gold_key])))               
+            if isinstance(gold_value, dict):
+                flattened_dict_items.extend(flatten_and_match_dicts(gold_value,
+                                                            pred_dict[gold_key],
+                                                            match_score,
+                                                            parent_key=f"{parent_key}{gold_key}/"))
+            if isinstance(gold_value, list):
+                matched_gold, matched_pred = match_pred_list(gold_list = gold_value,
+                                                pred_list = pred_dict[gold_key],
+                                                match_score = match_score)
+                for i, gold_list_val in enumerate(matched_gold):
+                    if isinstance(gold_list_val, str):
+                        flattened_dict_items.append(f"{parent_key}{gold_key}/{i}" ,
+                                                (gold_list_val, matched_pred[i]))
+                    if isinstance(gold_list_val, dict):
+                        flattened_dict_items.extend(flatten_and_match_dicts(gold_list_val,
+                                                                matched_pred[i],
+                                                                match_score,
+                                                                parent_key=f"{parent_key}{gold_key}/{i}/"))
         else :
-            raise ValueError(f"unexpected type: {gold.type}")
+            if isinstance(gold_value, str):
+                flattened_dict_items.append(f"{parent_key}{gold_key}" ,
+                                                (gold_value, no_such_key))
+            if isinstance(gold_value, dict):
+                flattened_dict_items.extend(flatten_and_match_dicts(gold_value,
+                                                            {},
+                                                            match_score,
+                                                            parent_key=f"{parent_key}{gold_key}/"))
+            if isinstance(gold_value, list):
+                for i, val in enumerate(value):
+                    if isinstance(val, str):
+                        flattened_dict_items.append(f"{parent_key}{gold_key}/{i}" ,
+                                                (gold_value, no_such_key))
+                    if isinstance(val, dict):
+                        flattened_dict_items.extend(flatten_and_match_dicts(val,
+                                                                {},
+                                                                match_score,
+                                                                parent_key=f"{parent_key}{gold_key}/{i}/"))
 
-    return eval_dict
-        
+    
+    for pred_key, pred_value in pred_dict.items():
+        if pred_key not in gold_dict.keys():
+            if isinstance(pred_value, str):
+                flattened_dict_items.append(f"{parent_key}{pred_key}" ,
+                                                (no_such_key, pred_value))
+            if isinstance(pred_value, dict):
+                flattened_dict_items.extend(flatten_and_match_dicts({},
+                                                            pred_value,
+                                                            match_score,
+                                                            parent_key=f"{parent_key}{pred_key}/"))
+            if isinstance(pred_value, list):
+                for i, val in enumerate(value):
+                    if isinstance(val, str):
+                        flattened_dict_items.append(f"{parent_key}{pred_key}/{i}" ,
+                                                (no_such_key, pred_value))
+                    if isinstance(val, dict):
+                        flattened_dict_items.extend(flatten_and_match_dicts({},
+                                                                val,
+                                                                match_score,
+                                                                parent_key=f"{parent_key}{pred_key}/{i}"))
+    
+
+    if parent_key == '':
+        for k in flattened_dict_items:
+            print(k)
+        return dict(flattened_dict_items)
+    else:
+        return flattened_dict_items
+
+
+def get_evaluation_dict(flattened_matched_dict, evaluation_scores):
+    evaluation_dict = {}
+    evaluation_dict{'missing_keys'} = 0
+    evaluation_dict{'additional_keys'} = 0
+    evaluation_dict{'accurate_nones'} = 0
+    evaluation_dict{'accurate_not_nones'} = 0
+    evaluation_dict{'non_accurate_nones'} = 0
+    evaluation_dict{'non_accurate_none_nones'} = 0
+    for key, (gold, pred) in flattened_matched_dict.items():
+        if gold == no_such_key:
+            evaluation_dict['additional_keys'] += 1
+            evaluation_dict[key] = (gold, pred)
+        if pred == no_such_key:
+            evaluation_dict['missing_keys'] += 1
+            evaluation_dict[key] = (gold, pred)
+        if gold == none_field:
+            if pred == none_field:
+                evaluation_dict['accurate_nones'] += 1
+                evaluation_dict[key] = None_Match
+            else:
+                evaluation_dict[key] = (gold, pred)
+                evaluation_dict['non_accurate_none_nones'] += 1
+        else:
+            if pred == none_field:
+                evaluation_dict[key] = (gold, pred)
+                evaluation_dict['non_accurate_nones'] += 1
+            else:
+                evaluation_dict[key] = evaluation_scores(gold, pred)
+                accurate_not_nones += 1
+    
+    return evaluation_dict
+    
+
+
+    
