@@ -1,4 +1,8 @@
 import numpy as np
+import pandas as pd
+from nltk.translate.bleu_score import sentence_bleu
+from rouge import Rouge
+
 
 none_match  = "None_Match"
 no_such_key = "no_such_key"
@@ -6,8 +10,8 @@ none_field = "None"
 
 def evaluation_scores(gold, pred):
     return {
-        'bleu' : bleu_score(gold, pred),
-        'rouge' : rouge_score(gold, pred),
+        'bleu' : sentence_bleu([gold], pred),
+        'rouge' : Rouge().get_scores(gold, pred)[0],
         'gpt_4' : (gold, pred) #We strore the string for now, socre will be calculated later
     }
 

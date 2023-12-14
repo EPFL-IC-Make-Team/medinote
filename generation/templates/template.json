@@ -20,8 +20,8 @@
     "occupation": ""
   },
   "patient medical history": {
-    "physiological context": "",
-    "psychological context": "",
+    "physiological context": "", 
+    "psychological context": "", 
     "vaccination history": "",
     "allergies": "",
     "exercise frequency": "",
@@ -32,8 +32,8 @@
     "smoking status": ""
   },
   "surgeries": [{
-    "reason": "",
-    "Type": "",
+    "reason": "", 
+    "Type": "", 
     "time": "",
     "outcome": "",
     "details": ""
@@ -42,7 +42,7 @@
     {
       "name of symptom": "",
       "intensity of symptom": "",
-      "location": "",
+      "location": "", 
       "time": "",
       "temporalisation": "",
       "behaviours affecting the symptom": "",
@@ -56,7 +56,7 @@
   }],
   "diagnosis tests": [
     {
-      "test": "",
+      "test": "", 
       "severity": "",
       "result": "",
       "condition": "",
@@ -66,19 +66,19 @@
   ],
   "treatments": [
     {
-      "name": "",
-      "related condition": "",
-      "dosage": "",
-      "time": "",
-      "frequency": "",
+      "name": "", 
+      "related condition": "", 
+      "dosage": "", 
+      "time": "", 
+      "frequency": "", 
       "duration": "",
-      "reason for taking": "",
-      "reaction to treatment": "",
+      "reason for taking": "", 
+      "reaction to treatment": "", 
       "details": ""
     }
   ],
   "discharge": {
-    "reason": "", 
+    "reason": "",
     "referral": "",
     "follow up": "",
     "discharge summary": ""
