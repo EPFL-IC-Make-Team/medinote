@@ -16,6 +16,8 @@ import json
 import argparse
 import shutil
 
+from utils.inference import load_file, save_file
+
 
 def get_openai_credentials(path='generation/keys.json'):
     if not os.path.exists(path):
@@ -164,8 +166,6 @@ async def dispatch_openai_requests(
         if nb_done % 20 == 0: #informative outputs
             print(nb_done)
             save_to_pickle("safety_save.pkl", res_list)
-        else: 
-            print('.', end = '')
         return res 
         
     async_responses = [one_call(x) for x in messages_list] #multiple calls
@@ -326,20 +326,15 @@ def extract(
         use_notes: whether to use the clinical notes
         use_dialogues: whether to use the dialogues
     '''
-    # Load data (resume if save_path exists)
     print("Loading Data...")
     if os.path.exists(data_path):
-        if nb_to_generate is not None:
-            notechat_batch = pd.read_json(data_path, lines=True, nrows = nb_to_generate ,orient='records')
-        else :
-            notechat_batch = pd.read_json(data_path, lines=True, orient='records')
+        notechat_batch = pd.read_json(data_path, lines=True, nrows=nb_to_generate, orient='records')
     else:
         raise ValueError(f'Data file {data_path} not found.')
     
-    # Create dataframe to save extracted summaries
     print("Looking for already generated summaries...")
     if os.path.exists(save_path):
-        dataframe = pd.read_json(save_path, lines=True, orient='records')
+        dataframe = load_file(save_path)
         ids_done = dataframe['idx'].tolist()
     else:
         dataframe = pd.DataFrame(columns=['idx', 'data', 'conversation', 'summary'])
@@ -349,19 +344,14 @@ def extract(
         print(f'{len(ids_done)} generations already done. Skipping them.')
         notechat_batch = notechat_batch[~notechat_batch['idx'].isin(ids_done)]
 
-    # Load template
     print("Loading template...")
     if not os.path.exists(template_path):
         raise ValueError(f'Template file {template_path} not found.')
     with open(template_path) as f:
         template = json.dumps(json.load(f), indent=4)
 
-    # Load instructions
     print("Loading instructions...")
-    if not os.path.exists(instruction_path):
-        raise ValueError(f'Instruction file {instruction_path} not found.')
-    with open(instruction_path) as f:
-        instruction = f.read()
+    instruction = load_file(instruction_path)
 
     print("Building prompts...")
     prompts = [
@@ -372,14 +362,13 @@ def extract(
                 template=template,
             ) for _, row in tqdm(notechat_batch.iterrows(), total=notechat_batch.shape[0])
         ]
-    
-    # Build messages
-    print("Building messages...")
-    notechat_batch['messages'] =[build_messages(*prompt) for prompt in tqdm(prompts, total=len(prompts))]
 
-    #Creating sub_batches:
+    notechat_batch['messages'] =[build_messages(*prompt) for prompt in tqdm(
+        prompts, total=len(prompts), desc="Building messages")]
+
     print("Creating sub-batches...")
-    sub_batches = partition(dataframe = notechat_batch, max_token_per_partition=max_tokens,model = model) #builds a partitions which have total number of tokens < max_tokens
+    # Builds a partitions which have total number of tokens < max_tokens
+    sub_batches = partition(dataframe = notechat_batch, max_token_per_partition=max_tokens,model = model)
     
     notechat_batch.drop(columns = ["messages"], inplace = True)
 
@@ -397,8 +386,6 @@ def extract(
         sub_batch_df.drop(columns = ["messages"], inplace = True)
         ids_done.extend(sub_batch_df['idx'].tolist())
         dataframe = pd.concat([dataframe, sub_batch_df], ignore_index=True)
-
-        # Make a copy of the current file
         shutil.copyfile(save_path, f'{save_path[:-6]}{i}.jsonl')
 
         with open(save_path, 'a') as f:

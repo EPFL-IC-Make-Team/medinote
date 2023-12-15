@@ -38,115 +38,140 @@ NONE_FIELD = "None"
 class Scorer(): 
     def __init__(self, score_types='all', cot=False):
         ''' 
-        Initializes a scorer with a list of score types to be used.
+        Initializes a scorer with a list of scoring modes to be used.
         Argument: 
             - score_types (str or list): list of scoring functions. Default: 'all' (all scoring functions)
             - cot (bool): whether to use Chain-of-Thought or not for GPT-4 evaluation (default: True)
         '''
         self.cot = cot
         self.score_types = ['bleu', 'rouge', 'bert', 'gpt_rank', 'gpt_score'] if score_types == 'all' else score_types
-        #print('Initialized scorer with score types: ', list(self.score_types))
+        #print('Initialized scorer with modes: ', list(self.score_types))
 
-    async def __call__(self, gold, pred): 
+    def __call__(self, pairs): 
         '''
-        Given a gold and predicted string, returns a dictionary of all scores. 
+        Given a list of dictionaries with gold and predicted pairs, 
+        returns a dictionary of lists with all metrics computed for each pair.
 
         Example usage: 
+            pairs = [{'gold': 'x', 'pred': 'y'}]
             scorer = Scorer(['bleu', 'rouge', 'bert'])
-            scores = await scorer(gold, pred)
+            scores = await scorer(pairs)
+            --> scores = [{'bleu': 0.5, 'rouge': 0.3, 'bert': 0.7}]
         '''
         scores = {}
         if 'bleu' in self.score_types:
-            scores['bleu'] = self.BLEU_score(gold, pred)
+            scores.update(self.BLEU_scorer(pairs))
         if 'rouge' in self.score_types:
-            scores['rouge'] = self.ROUGE_score(gold, pred)
+            scores.update(self.ROUGE_scorer(pairs))
         if 'bert' in self.score_types:
-            scores['bert'] = self.BERT_score(gold, pred)
+            scores.update(self.BERT_scorer(pairs))
         if 'gpt_rank' in self.score_types:
-            scores['gpt_rank'] = await self.GPT4_rank(gold, pred)
+            scores['gpt_rank'] = self.GPT_ranker(pairs)
         if 'gpt_score' in self.score_types:
-            scores['gpt_score'] = await self.GPT4_score(gold, pred)
+            scores['gpt_score'] = self.GPT_scorer(pairs)
         return scores
     
-    def evaluate(self, path):
-        '''
-        Given a path to a file, load it into a dataframe 
-        and compute scores for each pair of gold and pred strings.
-        '''
-        df = load_file(path)
-        df = df.sample(frac=1).reset_index(drop=True)
-        for i, row in tqdm(df.iterrows(), total=df.shape[0], desc="Scoring..."):
-            scores = self(row['gold'], row['pred'])
-            for score_type, score in scores.items():
-                df.loc[i, score_type] = score
-            if i % 10 == 0:
-                save_file(df, path)
-        save_file(df, path)
-        return df
-    
-    def BLEU_score(self, gold, pred):
+    def BLEU_scorer(self, pairs):
         ''' BLEU score for summary evaluation (precision-oriented)'''
-        results = BLEU_SCORER.compute(predictions=[pred], references=[[gold]])
-        return results['precisions'][0]
+        scores = {'bleu': []}
+        for pair in pairs:
+            score = BLEU_SCORER.compute(
+                predictions=[pair['pred']], references=[pair['gold']])['bleu']
+            scores['bleu'].append(score)
+        return scores
     
-    def ROUGE_score(self, gold, pred):
+    def ROUGE_scorer(self, pairs):
         ''' ROUGE score for summary evaluation (recall-oriented)'''
-        results = ROUGE_SCORER.compute(predictions=[pred], references=[[gold]])
-        return results
+        scores = {'rouge1': [], 'rouge2': [], 'rougeL': [], 'rougeLsum': []}
+        for pair in pairs:
+            rouge = ROUGE_SCORER.compute(
+                predictions=[pair['pred']], references=[pair['gold']])
+            for metric in rouge.keys():
+                scores[metric].append(rouge[metric])
+        return scores
 
-    def BERT_score(self, gold, pred):
-        results = BERT_SCORER.compute(predictions=[pred], references=[gold], lang="en")
-        return results['f1'][0]
+    def BERT_scorer(self, pairs):
+        scores = {'bert': []}
+        for pair in pairs:
+            score = BERT_SCORER.compute(
+                predictions=[pair['pred']], references=[pair['gold']], lang='en')['f1'][0]
+            scores['bert'].append(score)
+        return scores
     
-    async def GPT4_rank(self, gold, pred, 
-                        model_name='gpt-4-1106-preview', 
-                        temperature=0.0, 
-                        max_retries=5
-                        ):
+    def GPT_ranker(self, 
+                   pairs,
+                   model_name='gpt-4-1106-preview', 
+                   batch_size=10, 
+                   temperature=0.0):
         ''' 
-        Given 2 models’ answers (randomly mixed), ask GPT-4 to pick which one is the best. 
-        NOTE: we randomly mix gold and pred to avoid bias.
+        For each pair of gold and pred strings, ask GPT-4 to pick which one is the best.
+        NOTE: we randomly mix answer order to avoid bias.
 
         Arguments:
-            - gold (str): gold answer
-            - pred (str): predicted answer
+            - pairs (list of dict {'gold': str, 'pred': str}): list of gold and pred strings
             - model_name (str): name of the GPT-4 model to use (default: gpt-4-1106-preview)
-            - temperature (float): temperature for GPT-4 sampling
-            - max_retries (int): max number of retries for GPT-4 sampling
+            - batch_size (int): batch size for GPT-4 parallelization (default: 10)
+            - temperature (float): temperature for GPT-4 sampling (default: 0.0)
         Returns: 
-            - dictionary with the winner and the explanation
+            - dataframe with the winner and the explanation
+
+        TODO: Save the explanations and scores in a separate file.
         '''
-        switch = np.random.choice([0, 1])
-        option1 = gold if switch == 0 else pred
-        option2 = gold if switch == 1 else pred
-        sys_prompt = f"Compare the two clinical notes and rank which one is of higher quality. \
-            \n\nAnswer 1: {option1}\n\nAnswer 2: {option2}\n\nAnswer 3: They are equally good."
-        if self.cot: 
-            usr_prompt = "In one sentence, explain your reasoning in comparing the two clinical notes, then select your final answer. \
-                Format your response as follows: \n\nExplanation: <your explanation>\n\nAnswer: <your answer>"
-        else: 
-            usr_prompt = "Directly select your final answer as follows: \n\nAnswer: <your answer>"
-        messages = build_messages(sys_prompt, usr_prompt)
-        try: 
-            response = await openai_chat(messages,model_name, temperature, max_retries)
-            answer = response.split('Answer: ')[1]
-            explanation = None if not self.cot else response.split('Explanation: ')[1].split('Answer: ')[0].strip()
-            if '1' in answer: 
-                winner = 'gold' if switch == 0 else 'pred'
-            elif '2' in answer:
-                winner = 'gold' if switch == 1 else 'pred'
-            elif '3' in answer:
-                winner = 'tie'
-            else:
-                raise ValueError(f"Invalid answer {answer}.")
-            return {'winner': winner, 'explanation': explanation}
-        except:
-            return None
+
+        # Build prompts for GPT-4 from gold/pred pairs
+        dataset = pd.DataFrame(pairs)
+        dataset[['winner', 'explanation', 'switch', 'model_name']] = [None, None, None, model_name]
+        messages = []
+        for i, pair in tqdm(dataset.iterrows(), total=len(pairs), desc="Building rank prompts"): 
+            gold = pair['gold']
+            pred = pair['pred']
+            switch = np.random.choice([0, 1])
+            option1 = gold if switch == 0 else pred
+            option2 = gold if switch == 1 else pred
+            sys_prompt = f"Compare the two clinical notes and rank which one is of higher quality. \
+                \n\nAnswer 1: {option1}\n\nAnswer 2: {option2}\n\nAnswer 3: They are equally good."
+            if self.cot: 
+                usr_prompt = "In one sentence, explain your reasoning in comparing the two clinical notes, then select your final answer. \
+                    Format your response as follows: \n\nExplanation: <your explanation>\n\nAnswer: <your answer>"
+            else: 
+                usr_prompt = "Directly select your final answer as follows: \n\nAnswer: <your answer>"
+            messages.append(build_messages(sys_prompt, usr_prompt))
+            dataset.iloc[i]['switch'] = switch
+        
+        # Generate answers by batches
+        for i in tqdm(range(0, dataset.shape[0], batch_size), desc="Ranking pairs of clinical notes"):
+            batch_df = dataset.iloc[i:i+batch_size]
+            try:
+                answers = generate_answers(
+                    messages_list = messages[i:i+batch_size],
+                    formatting=lambda x: x,
+                    chat=chat_gpt_4_turbo,
+                    temperature=temperature
+                )
+                for j, response in enumerate(answers):
+                    answer = response.split('Answer: ')[1]
+                    explanation = None if not self.cot else response.split('Explanation: ')[1].split('Answer: ')[0].strip()
+                    switch = batch_df.iloc[i+j]['switch']
+                    if '1' in answer: 
+                        winner = 'gold' if switch == 0 else 'pred'
+                    elif '2' in answer:
+                        winner = 'gold' if switch == 1 else 'pred'
+                    elif '3' in answer:
+                        winner = 'tie'
+                    else:
+                        raise ValueError(f"Invalid answer {answer}.")
+                    dataset.iloc[i+j]['winner'] = winner
+                    dataset.iloc[i+j]['explanation'] = explanation
+            except: 
+                answers = [None] * batch_df.shape[0]
+        return list(dataset['winner'])
     
-    async def GPT4_score(self, gold, pred, 
-                         model_name='gpt-4-1106-preview',
-                         temperature=0.0,
-                         max_retries=5):
+    
+    def GPT_scorer(self, 
+                   pairs,
+                   model_name='gpt-4-1106-preview',
+                   temperature=0.0,
+                   batch_size=10):
         ''' 
         Given a model’s answer and GPT-4' answer (silver label), 
         ask GPT-4 with CoT to compute the similarity between the two answers on a scale of 1 to 10. 
@@ -154,35 +179,56 @@ class Scorer():
         NOTE: we randomly mix gold and pred to avoid bias.
 
         Arguments:
-            - gold (str): gold answer
-            - pred (str): predicted answer
+            - pairs (list of dict {'gold': str, 'pred': str}): list of gold and pred strings
             - model_name (str): name of the GPT-4 model to use (default: gpt-4-1106-preview)
-            - temperature (float): temperature for GPT-4 sampling
-            - max_retries (int): max number of retries for GPT-4 sampling
+            - temperature (float): temperature for GPT-4 sampling (default: 0.0)
+            - batch_size (int): batch size for GPT-4 parallelization (default: 10)
         Returns: 
-            - dictionary with the similarity score and the explanation
-        '''
-        switch = np.random.choice([0, 1])
-        option1 = gold if switch == 0 else pred
-        option2 = gold if switch == 1 else pred
-        sys_prompt = f"Compare the two clinical notes and rate how similar they are to each other on a scale of 1 to 10. \
-            \n\nAnswer 1: {option1}\n\nAnswer 2: {option2}\n\nAnswer 3: They are equally good."
-        if self.cot: 
-            usr_prompt = "In one sentence, explain your reasoning in comparing the two clinical notes, then select your final answer. \
-                Format your response as follows: \n\nExplanation: <your explanation>\n\nAnswer: <your answer>"
-        else: 
-            usr_prompt = "Directly select your final answer as follows: \n\nAnswer: <your answer>"
-        messages = build_messages(sys_prompt, usr_prompt)
-        try:
-            response = await openai_chat(messages, model_name, temperature, max_retries)
-            answer = response.split('Answer: ')[1]
-            explanation = None if not self.cot else response.split('Explanation: ')[1].split('Answer: ')[0].strip()
-            similarity = int(re.findall(r'\d+', answer)[0])
-            return {'similarity': similarity, 'explanation': explanation}
-        except:
-            return None
+            - dataframe with the similarity score and the explanation
 
-    
+        TODO: Save the explanations and scores in a separate file.
+        '''
+
+        # Build prompts for GPT-4 from gold/pred pairs
+        dataset = pd.DataFrame(pairs)
+        messages = []
+        dataset[['similarity', 'explanation', 'model_name']] = [None, None, model_name]
+        for i, pair in tqdm(dataset.iterrows(), total=len(pairs), desc="Building rank prompts"): 
+            gold = pair['gold']
+            pred = pair['pred']
+            switch = np.random.choice([0, 1])
+            option1 = gold if switch == 0 else pred
+            option2 = gold if switch == 1 else pred
+            sys_prompt = f"Compare the two clinical notes and rate how similar they are to each other on a scale of 1 to 10.\
+                \n\nNote 1:\n\n{option1}\n\nNote 2:\n\n{option2}"
+            if self.cot: 
+                usr_prompt = "In one sentence, explain your reasoning in comparing the two clinical notes, then select your final answer. \
+                    Format your response as follows: \n\nExplanation: <your explanation>\n\nAnswer: <your answer>"
+            else: 
+                usr_prompt = "Directly respond with your final answer as follows: \n\nAnswer: <your answer>"
+            messages.append(build_messages(sys_prompt, usr_prompt))
+
+        # Generate answers by batches
+        for i in tqdm(range(0, dataset.shape[0], batch_size), desc="Scoring pairs of clinical notes"):
+            batch_df = dataset.iloc[i:i+batch_size]
+            try:
+                answers = generate_answers(
+                    messages_list = messages[i:i+batch_size],
+                    formatting=lambda x: x,
+                    chat=chat_gpt_4_turbo,
+                    temperature=temperature
+                )
+                for j, response in enumerate(answers):
+                    answer = response.split('Answer: ')[1]
+                    explanation = None if not self.cot else response.split('Explanation: ')[1].split('Answer: ')[0].strip()
+                    similarity = int(re.findall(r'\d+', answer)[0])
+                    dataset.iloc[i+j]['similarity'] = similarity
+                    dataset.iloc[i+j]['explanation'] = explanation
+            except: 
+                answers = [None] * batch_df.shape[0]
+        return list(dataset['similarity'])
+        
+
 # ----------------------- 1 - Patient Summary evaluation ----------------------- #
     
 
@@ -316,7 +362,7 @@ def summary_statistics(gold, pred, score_types=['rouge', 'bleu', 'bert']):
                 stats['pred_none'] += 1
             else:
                 stats['common'] += 1
-                scores[key] = scorer(gold, pred)
+                scores[key] = scorer([{'gold': gold, 'pred': pred}])
     return scores, stats
 
 def summary_evaluation(path, score_types=['bleu', 'rouge', 'bert']): 
@@ -327,26 +373,25 @@ def summary_evaluation(path, score_types=['bleu', 'rouge', 'bert']):
     Arguments: 
         - path (str): path to dataframe with 'gold' and 'pred' patient summaries
         - score_types (str or list): list of scoring functions to be used. (Default: BLEU + ROUGE + BERT)
-
-    NOTE: Need to implement the inference and creation of this dataframe in inference.py
     '''
-    df = load_file(path)
-    df = df.sample(frac=1).reset_index(drop=True)
+    dataset = load_file(path)
+    dataset = dataset.sample(frac=1).reset_index(drop=True)
     scores_path = path.replace('.jsonl', '_scores.jsonl')
-    for i, row in tqdm(df.iterrows(), total=df.shape[0], desc="Evaluating pairs of patient summaries"):
+    for i, row in tqdm(dataset.iterrows(), total=dataset.shape[0], desc="Evaluating pairs of patient summaries"):
         # Compute summary statistics
         scores, stats = summary_statistics(row['gold'], row['pred'], score_types)
         for stat_type, stat in stats.items():
-            df.loc[i, stat_type] = stat
+            dataset.loc[i, stat_type] = stat
         
-        # Compute average matching score over all common keys
-        for score_type in score_types:
-            avg_score = np.mean([score[score_type] for score in scores.values()])
-            df.loc[i, score_type] = avg_score
+        # Compute average matching score for each metric
+        metrics = list(scores[list(scores.keys())[0]].keys())
+        for metric in metrics:
+            avg_score = np.mean([score[metric] for score in scores.values()])
+            dataset.iloc[i][metric] = avg_score
         if i % 10 == 0:
-            save_file(df, scores_path)
-    save_file(df, scores_path)
-    return df
+            save_file(dataset, scores_path)
+    save_file(dataset, scores_path)
+    return dataset
 
 # ----------------------- 2 - Clinical note evaluation ----------------------- #
     
@@ -381,7 +426,7 @@ def clinical_note_evaluation(model_name, path, score_types='all'):
     save_file(df, scores_path)
 
     # Compute ELO ranking from GPT-4 scores
-    if 'gpt_4_rank' in score_types:
+    if 'gpt_rank' in score_types:
         rankings_path = path.replace('.jsonl', '_rankings.jsonl')
         rankings = elo_ranking(df)
         print(f'ELO rankings: {rankings}')
