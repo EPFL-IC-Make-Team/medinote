@@ -406,8 +406,6 @@ def clinical_note_evaluation(model_name, path, score_types='all'):
         - model_name (str): name of the model used to generate the clinical notes
         - path (str): path to dataframe with 'gold' and 'pred' clinical notes
         - score_types (str or list): list of scoring functions to be used. Default: 'all' (all scoring functions)
-
-    NOTE: Need to implement inference and creation of this dataframe in inference.py
     '''
     # Load dataframe with inference results
     df = load_file(path)
