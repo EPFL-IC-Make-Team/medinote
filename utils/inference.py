@@ -51,7 +51,6 @@ def save_file(df, path):
 
 def generate(model_name, 
              model_path, 
-             prompt_path,
              data_path,
              output_path=None):
     '''
@@ -63,7 +62,6 @@ def generate(model_name,
     Arguments: 
         - model_name: Name of the model to be loaded.
         - model_path: Path to the model.
-        - prompt_path: Path to the prompt file with instructions.
         - data_path: Path to the data file with dialog or patient summaries. 
         - output_path: Path to the output file with generated notes
     '''
@@ -78,9 +76,10 @@ def generate(model_name,
     model.eval()
 
     # Load instruction and data
-    instructions = load_file(prompt_path)
     dataset = load_file(data_path)
     dataset['model_name'] = model_name
+    if output_path is None:
+        output_path = data_path.replace('.jsonl', f'-{model_name}.jsonl')
 
     parameters = {
         'max_new_tokens': 1000,
@@ -91,16 +90,15 @@ def generate(model_name,
         'return_full_text': False
     }
     pipe = pipeline("text-generation", model=model, tokenizer= tokenizer, **parameters)
-    for i, row in tqdm(dataset.iterrows(), total=len(dataset), desc="Generating"):
-        prompt = instructions + '\n\n' + row['text']
-        answer = pipe(prompt)['generated_text']
-        dataset.loc[i, 'gen'] = answer
+    for i, row in tqdm(dataset.iterrows(), total=len(dataset), 
+                       desc=f"Generating answers from {model_name}"):
+        answer = pipe(row['prompt'])['generated_text']
+        dataset.loc[i, 'pred'] = answer
         if i % 10 == 0: 
             save_file(dataset, output_path)
     save_file(dataset, output_path)
     return dataset
     
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -112,10 +110,6 @@ if __name__ == "__main__":
                         type=str, 
                         default='/pure-mlo-scratch/make_project/trial-runs/meditron-7b-summarizer/hf_checkpoint/', 
                         help='Path to the model.')
-    parser.add_argument('--prompt_path', 
-                        type=str, 
-                        default='../generation/instructions/direct.txt', 
-                        help='Path to the prompt file with instructions.')
     parser.add_argument('--data_path', 
                         type=str, 
                         default='data/direct_train.jsonl',
