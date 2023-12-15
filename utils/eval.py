@@ -28,9 +28,10 @@ BERT_SCORER = load("bertscore")
 ROUGE_SCORER = load("rouge")
 BLEU_SCORER = load("bleu")
 
-none_match  = "None_Match"
-no_such_key = "no_such_key"
-none_field = "None"
+NONE_MATCH  = "None_Match"
+NO_SUCH_KEY = "no_such_key"
+NONE_FIELD = "None"
+
 
 # ----------------------- Generic utils ----------------------- #
 
@@ -76,7 +77,7 @@ class Scorer():
         '''
         self.cot = cot
         self.score_types = ['bleu', 'rouge', 'bert', 'gpt_rank', 'gpt_score'] if score_types == 'all' else score_types
-        print('Initialized scorer with score types: ', list(self.score_types))
+        #print('Initialized scorer with score types: ', list(self.score_types))
 
     async def __call__(self, gold, pred): 
         '''
@@ -115,7 +116,6 @@ class Scorer():
         save_file(df, path)
         return df
     
-    
     def BLEU_score(self, gold, pred):
         ''' BLEU score for summary evaluation (precision-oriented)'''
         results = BLEU_SCORER.compute(predictions=[pred], references=[[gold]])
@@ -145,9 +145,8 @@ class Scorer():
             - model_name (str): name of the GPT-4 model to use (default: gpt-4-1106-preview)
             - temperature (float): temperature for GPT-4 sampling
             - max_retries (int): max number of retries for GPT-4 sampling
-            - cot (bool): whether to use Chain-of-Thought or not (default: True)
         Returns: 
-            - dictionary with the winner and the explanation.
+            - dictionary with the winner and the explanation
         '''
         switch = np.random.choice([0, 1])
         option1 = gold if switch == 0 else pred
@@ -186,7 +185,14 @@ class Scorer():
         The higher the number the closer the model’s quality to GPT-4's. 
         NOTE: we randomly mix gold and pred to avoid bias.
 
-        A
+        Arguments:
+            - gold (str): gold answer
+            - pred (str): predicted answer
+            - model_name (str): name of the GPT-4 model to use (default: gpt-4-1106-preview)
+            - temperature (float): temperature for GPT-4 sampling
+            - max_retries (int): max number of retries for GPT-4 sampling
+        Returns: 
+            - dictionary with the similarity score and the explanation
         '''
         switch = np.random.choice([0, 1])
         option1 = gold if switch == 0 else pred
@@ -209,17 +215,21 @@ class Scorer():
             return None
 
     
-    
 # ----------------------- 1 - Patient Summary evaluation ----------------------- #
     
-def match_pred_list(gold_list, pred_list, match_score):
+
+def match_list(gold_list, pred_list, scorer_type='bert'):
     '''
-    Given two lists of dictionaries, match corresponding dictionaries by value
-    and compute matching score between their values.
+    Given two lists of dictionaries, match corresponding dictionaries by score.
+    Arguments: 
+        - gold_list (list of dict): list of gold dictionaries
+        - pred_list (list of dict): list of predicted dictionaries
+        - scorer_type (str): type of scorer to use for matching (default: 'bert') 
     '''
+    scorer = Scorer([scorer_type])
+
     if len(gold_list) == 1 and len(pred_list) == 1:
         return gold_list, pred_list
-    
     if len(gold_list) == 0:
         matched_gold = [{}] * len(pred_list)
     if len(pred_list) == 0:
@@ -239,7 +249,7 @@ def match_pred_list(gold_list, pred_list, match_score):
             for i, pred_item in enumerate(pred_list_):
                 gold_string = ", ".join(str(value) for value in gold_item.values() if value is not None)
                 pred_string = ", ".join(str(value) for value in pred_item.values() if value is not None)
-                score = match_score(gold_string, pred_string)
+                score = scorer(gold_string, pred_string)[scorer_type]
                 if max_score is None or score > max_score:
                     max_score = score
                     best_match_index = i
@@ -256,167 +266,127 @@ def match_pred_list(gold_list, pred_list, match_score):
     return matched_gold, matched_pred
 
 
-def flatten_and_match_dicts(gold_dict, pred_dict, match_score, parent_key=''):
+def flatten_dict(gold, pred, parent_key=''):
     '''
-    Given two dictionaries, match corresponding keys 
-    and compute matching score between their values. 
+    Flattening utility function; 
+    Given two dictionaries, match corresponding keys and compute matching score between their values. 
 
     Arguments: 
-        - gold_dict (dict): dictionary of gold values
-        - pred_dict (dict): dictionary of predicted values
-        - match_score (function): function ((str, str) --> float) to compute matching score
+        - gold (dict): dictionary of gold values
+        - pred (dict): dictionary of predicted values
         - parent_key (str): key of parent dictionary, used for recursion
+    Returns:   
+        - flat (dict of str: (str, str)): flattened dictionary of matched (gold, pred) values
     '''
-    scorer = Scorer(['bleu', 'rouge', 'bert'])
-    flattened_dict_items = []
-    for gold_key, gold_value in gold_dict.items():
-        if gold_key in pred_dict.keys():
+    flat = []
+    for gold_key, gold_value in gold.items():
+        if gold_key in pred.keys(): # Matched pred & gold keys
             if isinstance(gold_value, str):
-                    flattened_dict_items.append((f"{parent_key}{gold_key}",
-                                                (gold_value, pred_dict[gold_key])))               
+                    flat.append((f"{parent_key}{gold_key}", (gold_value, pred[gold_key])))               
             if isinstance(gold_value, dict):
-                flattened_dict_items.extend(flatten_and_match_dicts(gold_value,
-                                                            pred_dict[gold_key],
-                                                            match_score,
-                                                            parent_key=f"{parent_key}{gold_key}/"))
+                flat.extend(flatten_dict(gold_value, pred[gold_key], parent_key=f"{parent_key}{gold_key}/"))
             if isinstance(gold_value, list):
-                matched_gold, matched_pred = match_pred_list(gold_list = gold_value,
-                                                pred_list = pred_dict[gold_key],
-                                                match_score = match_score)
+                matched_gold, matched_pred = match_list(
+                    gold_list = gold_value, pred_list = pred[gold_key])
                 for i, gold_list_val in enumerate(matched_gold):
                     if isinstance(gold_list_val, str):
-                        flattened_dict_items.append(f"{parent_key}{gold_key}/{i}" ,
-                                                (gold_list_val, matched_pred[i]))
+                        flat.append(f"{parent_key}{gold_key}/{i}", (gold_list_val, matched_pred[i]))
                     if isinstance(gold_list_val, dict):
-                        flattened_dict_items.extend(flatten_and_match_dicts(gold_list_val,
-                                                                matched_pred[i],
-                                                                match_score,
-                                                                parent_key=f"{parent_key}{gold_key}/{i}/"))
-        else :
+                        flat.extend(flatten_dict(gold_list_val, matched_pred[i], 
+                                                 parent_key=f"{parent_key}{gold_key}/{i}/"))
+        else: # No match for gold key
             if isinstance(gold_value, str):
-                flattened_dict_items.append(f"{parent_key}{gold_key}" ,
-                                                (gold_value, no_such_key))
+                flat.append(f"{parent_key}{gold_key}", (gold_value, NO_SUCH_KEY))
             if isinstance(gold_value, dict):
-                flattened_dict_items.extend(flatten_and_match_dicts(gold_value,
-                                                            {},
-                                                            match_score,
-                                                            parent_key=f"{parent_key}{gold_key}/"))
+                flat.extend(flatten_dict(gold_value, {}, parent_key=f"{parent_key}{gold_key}/"))
             if isinstance(gold_value, list):
                 for i, val in enumerate(gold_value):
                     if isinstance(val, str):
-                        flattened_dict_items.append(f"{parent_key}{gold_key}/{i}" ,
-                                                (gold_value, no_such_key))
+                        flat.append(f"{parent_key}{gold_key}/{i}", (gold_value, NO_SUCH_KEY))
                     if isinstance(val, dict):
-                        flattened_dict_items.extend(flatten_and_match_dicts(val,
-                                                                {},
-                                                                match_score,
-                                                                parent_key=f"{parent_key}{gold_key}/{i}/"))
-
-    
-    for pred_key, pred_value in pred_dict.items():
-        if pred_key not in gold_dict.keys():
+                        flat.extend(flatten_dict(
+                            val, {}, parent_key=f"{parent_key}{gold_key}/{i}/"))
+    # No match for pred key
+    for pred_key, pred_value in pred.items():
+        if pred_key not in gold.keys():
             if isinstance(pred_value, str):
-                flattened_dict_items.append(f"{parent_key}{pred_key}" ,
-                                                (no_such_key, pred_value))
+                flat.append(f"{parent_key}{pred_key}", (NO_SUCH_KEY, pred_value))
             if isinstance(pred_value, dict):
-                flattened_dict_items.extend(flatten_and_match_dicts({},
-                                                            pred_value,
-                                                            match_score,
-                                                            parent_key=f"{parent_key}{pred_key}/"))
+                flat.extend(flatten_dict({}, pred_value, parent_key=f"{parent_key}{pred_key}/"))
             if isinstance(pred_value, list):
                 for i, val in enumerate(pred_value):
                     if isinstance(val, str):
-                        flattened_dict_items.append(f"{parent_key}{pred_key}/{i}" ,
-                                                (no_such_key, pred_value))
+                        flat.append(f"{parent_key}{pred_key}/{i}", (NO_SUCH_KEY, pred_value))
                     if isinstance(val, dict):
-                        flattened_dict_items.extend(flatten_and_match_dicts({},
-                                                                val,
-                                                                match_score,
-                                                                parent_key=f"{parent_key}{pred_key}/{i}"))
-    
+                        flat.extend(flatten_dict({}, val, parent_key=f"{parent_key}{pred_key}/{i}"))
+                        
+    return flat if parent_key != '' else dict(flat)
 
-    if parent_key == '':
-        for k in flattened_dict_items:
-            print(k)
-        return dict(flattened_dict_items)
-    else:
-        return flattened_dict_items
-
-def get_evaluation_dict(flattened_matched_dict, evaluation_scores):
-    evaluation_dict = {}
-    for key in ['missing_keys', 'additional_keys', 'accurate_nones', 
-                'accurate_not_nones', 'non_accurate_nones', 'non_accurate_none_nones']:
-        evaluation_dict[key] = 0
-    for key, (gold, pred) in flattened_matched_dict.items():
-        if gold == no_such_key:
-            evaluation_dict['additional_keys'] += 1
-            evaluation_dict[key] = (gold, pred)
-        if pred == no_such_key:
-            evaluation_dict['missing_keys'] += 1
-            evaluation_dict[key] = (gold, pred)
-        if gold == none_field:
-            if pred == none_field:
-                evaluation_dict['accurate_nones'] += 1
-                evaluation_dict[key] = none_match
+def summary_statistics(flat, score_types=['rouge', 'bleu', 'bert']):
+    '''
+    Given a flattened dictionary of matched keys, compute matching scores & statistics: 
+    - number of missing keys
+    - number of extra keys
+    - number of accurate nones
+    - number of accurate not nones
+    - number of non accurate nones
+    - number of non accurate none nones
+    '''
+    scorer = Scorer(score_types)
+    scores = {}
+    stats = {'total': len(flat)}
+    for key in ['missing_keys', 'extra_keys', 'common', 'common_none', 'gold_none', 'pred_none']:
+        stats[key] = 0
+    for key, (gold, pred) in flat.items():
+        if gold == NO_SUCH_KEY:
+            stats['extra_keys'] += 1
+        if pred == NO_SUCH_KEY:
+            stats['missing_keys'] += 1
+        if gold == NONE_FIELD:
+            if pred == NONE_FIELD:
+                stats['common_none'] += 1
             else:
-                evaluation_dict[key] = (gold, pred)
-                evaluation_dict['non_accurate_none_nones'] += 1
+                stats['gold_none'] += 1
         else:
-            if pred == none_field:
-                evaluation_dict[key] = (gold, pred)
-                evaluation_dict['non_accurate_nones'] += 1
+            if pred == NONE_FIELD:
+                stats['pred_none'] += 1
             else:
-                evaluation_dict[key] = evaluation_scores(gold, pred)
-                accurate_not_nones += 1
-    
-    return evaluation_dict
+                stats['common'] += 1
+                scores[key] = scorer(gold, pred)
+    return scores, stats
 
-def build_gpt_4_scoring_dataset(evaluation_dicts_df):
-    '''
-    Given a df of evaluation dictionaries,
-    build a df of evaluation dictionaries for GPT-4 scoring.
-    '''
-    gpt_4_scoring_dataset = evaluation_dicts_df[['idxs', 'eval_dict']]
-    gpt_4_scoring_dataset['eval_dict'] = build_gpt_4_scoring_dataset['eval_dict'].apply(lambda x: {k: v for k, v in x.items() if isinstance(v, dict)})
-    gpt_4_scoring_dataset['eval_dict'] = build_gpt_4_scoring_dataset['eval_dict'].apply(lambda x: {k: v['gpt_4'] for k, v in x.items()})
-    gpt_4_scoring_dataset = build_gpt_4_scoring_dataset.explode('eval_dict')
-    gpt_4_scoring_dataset['key'] = build_gpt_4_scoring_dataset['eval_dict'].apply(lambda x: x[0])
-    gpt_4_scoring_dataset['gold'] = build_gpt_4_scoring_dataset['eval_dict'].apply(lambda x: x[1][0])
-    gpt_4_scoring_dataset['pred'] = build_gpt_4_scoring_dataset['eval_dict'].apply(lambda x: x[1][1])
-    gpt_4_scoring_dataset.drop(columns=['eval_dict'])
-
-    return build_gpt_4_scoring_dataset
-
-def input_gpt_4_scores(evaluation_dicts_df, gpt_4_scoring_dataset):
-    '''
-    Given a df of evaluation dictionaries and a df of GPT-4 scoring dictionaries,
-    input GPT-4 scores into the evaluation dictionaries df.
-    '''
-    gpt_4_scoring_dataset = gpt_4_scoring_dataset.groupby('idxs').agg({'key': list, 'score': list})
-    evaluation_dicts_df = evaluation_dicts_df.merge(gpt_4_scoring_dataset, on='idxs')
-    evaluation_dicts_df['eval_dict'] = evaluation_dicts_df[['eval_dict']].apply(
-        lambda x: {k: v for k, v in x['eval_dict'].items() if k in x['key']}, axis=1)
-    return evaluation_dicts_df
-
-def summary_evaluation(path, score_types='all'): 
+def summary_evaluation(path, score_types=['bleu', 'rouge', 'bert']): 
     '''
     1 - Patient summary evaluation
     Run evaluation on a dataframe with 'gold' and 'pred' patient summaries. 
 
     Arguments: 
         - path (str): path to dataframe with 'gold' and 'pred' patient summaries
-        - score_types (str or list): list of scoring functions to be used. Default: 'all' (all scoring functions)
+        - score_types (str or list): list of scoring functions to be used. (Default: BLEU + ROUGE + BERT)
 
     NOTE: Need to implement the inference and creation of this dataframe in inference.py
     '''
-    # Load dataframe with inference results
     df = load_file(path)
     df = df.sample(frac=1).reset_index(drop=True)
+    scores_path = path.replace('.jsonl', '_scores.jsonl')
+    for i, row in tqdm(df.iterrows(), total=df.shape[0], desc="Evaluating pairs of patient summaries"):
 
-    # TODO: Compute scores for each pair of gold and pred patient summaries
-    raise NotImplementedError
+        # Flatten patient summaries and match entries
+        flat = flatten_dict(row['gold'], row['pred'])
 
-
+        # Compute summary statistics
+        scores, stats = summary_statistics(flat, score_types=score_types)
+        for stat_type, stat in stats.items():
+            df.loc[i, stat_type] = stat
+        
+        # Compute average matching score over all common keys
+        for score_type in score_types:
+            avg_score = np.mean([score[score_type] for score in scores.values()])
+            df.loc[i, score_type] = avg_score
+        if i % 10 == 0:
+            save_file(df, scores_path)
+    save_file(df, scores_path)
+    return df
 
 # ----------------------- 2 - Clinical note evaluation ----------------------- #
     
@@ -471,6 +441,8 @@ def elo_ranking(df):
         - rankings (dict of str: float): dictionary of Elo rankings for each model
 
     All models start at 1500 Elo rating.
+    
+    TODO: CHECK THIS RUNS. 
     '''
     model_names = list(df['model_name'].unique()) + ['gpt-4']
     elo_history = {model: np.array([1500]) for model in model_names}
@@ -522,7 +494,7 @@ if __name__ == "__main__":
     print(f'Running evaluation on {args.mode} with score types: {score_types}')
 
     if args.mode == 'summary':
-        summary_evaluation(args.path, score_types)
+        summary_evaluation(args.path)
 
     elif args.mode == 'clinical_note':
         clinical_note_evaluation(args.path, score_types)
