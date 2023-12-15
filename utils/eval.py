@@ -1,27 +1,95 @@
+'''
+Evaluation utilities. 
+
+1- Patient Summary evaluation
+Given our model’s patient summary and GPT-4's summary generated from note, 
+compute the BLEU/ROUGE/BERT scores for all matching fields in the template. 
+We use BERT score to match list elements (e.g. symptoms). 
+
+2- Clinical note evaluation
+Here we want to evaluate the quality of our generated clinical notes using GPT-4. Two methods:
+Given 2 models’ answers (randomly mixed),  ask GPT-4 to pick which one is the best and compute an ELO score
+Given a model’s answer and GPT-4' answer (silver label), ask GPT-4 with CoT to compute the similarity 
+between the two answers on a scale of 1 to 10. The higher the number the closer the model’s quality to GPT-4's.
+
+'''
+
+from chat import *
 import numpy as np
-import pandas as pd
 from nltk.translate.bleu_score import sentence_bleu
 from rouge import Rouge
-
+from bert_score import BERTScorer
 
 none_match  = "None_Match"
 no_such_key = "no_such_key"
 none_field = "None"
 
-def evaluation_scores(gold, pred):
-    return {
-        'bleu' : sentence_bleu([gold], pred),
-        'rouge' : Rouge().get_scores(gold, pred)[0],
-        'gpt_4' : (gold, pred) #We strore the string for now, socre will be calculated later
-    }
+# ----------------------- Generic scorer (BLEU/ROUGE/BERT/GPT-4) ----------------------- #
+class Scorer(): 
+    def __init__(self, score_types='all'):
+        ''' 
+        Initializes a scorer with a list of score types to be used.
+        If score_types is 'all', all score types will be used.
+        Otherwise, use a list of score types to be used. 
+        '''
+        self.scoring_functions = {
+            'bleu': self.BLEU_score,
+            'rouge': self.ROUGE_score,
+            'bert': self.BERT_score,
+            'random': self.random_score,
+            'gpt_4_rank': self.GPT4_score_rank,
+            'gpt_4_sim': self.GPT4_score_sim
+        }
+        self.score_types = self.scoring_functions.keys() if score_types == 'all' else score_types
 
-def bert_match_score(gold, pred):
-    pass
+    def evaluate(self, gold, pred):
+        '''
+        Given a gold and predicted string, returns a dictionary of all scores. 
+        '''
+        scores = {}
+        for score_type in self.score_types:
+            scores[score_type] = self.scoring_functions[score_type](gold, pred)
+        return scores
 
-def random__match_score(gold, pred): #for testing only
-    return np.random.random()
+    def BLEU_score(self, gold, pred):
+        ''' BLEU score for summary evaluation (precision focused)'''
+        return sentence_bleu([gold], pred)
+    
+    def ROUGE_score(self, gold, pred):
+        ''' ROUGE score for summary evaluation (recall focused)'''
+        return Rouge().get_scores(gold, pred)[0]
 
+    def BERT_score(self, gold, pred):
+        scorer = BERTScorer(model_type='bert-base-uncased')
+        precision, recall, F1 = scorer.score([pred], [gold])
+        return F1.item()
+    
+    def random_score(self, gold, pred):
+        return np.random.random()
+    
+    def GPT4_score_rank(self, gold, pred):
+        ''' 
+        Given 2 models’ answers (randomly mixed),  
+        ask GPT-4 to pick which one is the best and compute an ELO score
+        '''
+        raise NotImplementedError
+    
+    def GPT4_score_sim(self, gold, pred):
+        ''' 
+        Given a model’s answer and GPT-4' answer (silver label), 
+        ask GPT-4 with CoT to compute the similarity between the two answers 
+        on a scale of 1 to 10. The higher the number the closer the model’s quality to GPT-4's.
+        '''
+        raise NotImplementedError
+    
+    
+# ----------------------- 1 - Patient Summary evaluation ----------------------- #
+    
 def match_pred_list(gold_list, pred_list, match_score):
+    '''
+    Given two lists of dictionaries, match corresponding dictionaries by value
+    and compute matching score between their values.
+    '''
     if len(gold_list) == 1 and len(pred_list) == 1:
         return gold_list, pred_list
     
@@ -35,7 +103,6 @@ def match_pred_list(gold_list, pred_list, match_score):
     matched_gold = gold_list.copy()
 
     # Iterate through each element in gold_list
-    
     for gold_item in gold_list:
         max_score = None
         best_match_index = -1
@@ -63,6 +130,17 @@ def match_pred_list(gold_list, pred_list, match_score):
 
 
 def flatten_and_match_dicts(gold_dict, pred_dict, match_score, parent_key=''):
+    '''
+    Given two dictionaries, match corresponding keys 
+    and compute matching score between their values. 
+
+    Arguments: 
+        - gold_dict (dict): dictionary of gold values
+        - pred_dict (dict): dictionary of predicted values
+        - match_score (function): function ((str, str) --> float) to compute matching score
+        - parent_key (str): key of parent dictionary, used for recursion
+    '''
+    scorer = Scorer(['bleu', 'rouge', 'bert'])
     flattened_dict_items = []
     for gold_key, gold_value in gold_dict.items():
         if gold_key in pred_dict.keys():
@@ -97,7 +175,7 @@ def flatten_and_match_dicts(gold_dict, pred_dict, match_score, parent_key=''):
                                                             match_score,
                                                             parent_key=f"{parent_key}{gold_key}/"))
             if isinstance(gold_value, list):
-                for i, val in enumerate(value):
+                for i, val in enumerate(gold_value):
                     if isinstance(val, str):
                         flattened_dict_items.append(f"{parent_key}{gold_key}/{i}" ,
                                                 (gold_value, no_such_key))
@@ -119,7 +197,7 @@ def flatten_and_match_dicts(gold_dict, pred_dict, match_score, parent_key=''):
                                                             match_score,
                                                             parent_key=f"{parent_key}{pred_key}/"))
             if isinstance(pred_value, list):
-                for i, val in enumerate(value):
+                for i, val in enumerate(pred_value):
                     if isinstance(val, str):
                         flattened_dict_items.append(f"{parent_key}{pred_key}/{i}" ,
                                                 (no_such_key, pred_value))
@@ -137,15 +215,13 @@ def flatten_and_match_dicts(gold_dict, pred_dict, match_score, parent_key=''):
     else:
         return flattened_dict_items
 
-
+# ----------------------- 2 - Clinical note evaluation ----------------------- #
+    
 def get_evaluation_dict(flattened_matched_dict, evaluation_scores):
     evaluation_dict = {}
-    evaluation_dict['missing_keys'] = 0
-    evaluation_dict['additional_keys'] = 0
-    evaluation_dict['accurate_nones'] = 0
-    evaluation_dict['accurate_not_nones'] = 0
-    evaluation_dict['non_accurate_nones'] = 0
-    evaluation_dict['non_accurate_none_nones'] = 0
+    for key in ['missing_keys', 'additional_keys', 'accurate_nones', 
+                'accurate_not_nones', 'non_accurate_nones', 'non_accurate_none_nones']:
+        evaluation_dict[key] = 0
     for key, (gold, pred) in flattened_matched_dict.items():
         if gold == no_such_key:
             evaluation_dict['additional_keys'] += 1
@@ -188,7 +264,8 @@ def build_gpt_4_scoring_dataset(evaluation_dicts_df):
 def input_gpt_4_scores(evaluation_dicts_df, gpt_4_scoring_dataset):
     gpt_4_scoring_dataset = gpt_4_scoring_dataset.groupby('idxs').agg({'key': list, 'score': list})
     evaluation_dicts_df = evaluation_dicts_df.merge(gpt_4_scoring_dataset, on='idxs')
-    evaluation_dicts_df['eval_dict'] = evaluation_dicts_df[['eval_dict']].apply(lambda x: {k: v for k, v in x['eval_dict'].items() if k in x['key']}, axis=1)
+    evaluation_dicts_df['eval_dict'] = evaluation_dicts_df[['eval_dict']].apply(
+        lambda x: {k: v for k, v in x['eval_dict'].items() if k in x['key']}, axis=1)
     
 
 
