@@ -15,6 +15,7 @@ between the two answers on a scale of 1 to 10. The higher the number the closer 
 '''
 
 from utils.chat import *
+from utils.inference import *
 
 import asyncio
 import numpy as np
@@ -31,39 +32,6 @@ BLEU_SCORER = load("bleu")
 NONE_MATCH  = "None_Match"
 NO_SUCH_KEY = "no_such_key"
 NONE_FIELD = "None"
-
-
-# ----------------------- Generic utils ----------------------- #
-
-def load_file(path): 
-    '''
-    Given a .csv or .json or .jsonl file, load it into a dataframe.
-    '''
-    if not os.path.exists(path):
-        raise ValueError(f"Path {path} does not exist.")
-    if '.csv' in path:
-        df = pd.read_csv(path)
-    elif '.jsonl' in path:
-        df = pd.read_json(path, lines=True)
-    elif '.json' in path:
-        df = pd.read_json(path)
-    else: 
-        raise ValueError(f"Provided path {path} is not a .csv, .json or .jsonl file.")
-    return df
-
-def save_file(df, path):
-    '''
-    Given a dataframe, save it to a .csv or .json or .jsonl file.
-    '''
-    if '.csv' in path:
-        df.to_csv(path, index=False)
-    elif '.jsonl' in path:
-        df.to_json(path, orient='records', lines=True)
-    elif '.json' in path:
-        df.to_json(path, orient='records')
-    else: 
-        raise ValueError(f"Provided path {path} is not a .csv, .json or .jsonl file.")
-    return df
 
 # ----------------------- Scoring functions (BLEU/ROUGE/BERT/GPT-4) ----------------------- #
 
@@ -322,16 +290,12 @@ def flatten_dict(gold, pred, parent_key=''):
                         
     return flat if parent_key != '' else dict(flat)
 
-def summary_statistics(flat, score_types=['rouge', 'bleu', 'bert']):
+def summary_statistics(gold, pred, score_types=['rouge', 'bleu', 'bert']):
     '''
-    Given a flattened dictionary of matched keys, compute matching scores & statistics: 
-    - number of missing keys
-    - number of extra keys
-    - number of accurate nones
-    - number of accurate not nones
-    - number of non accurate nones
-    - number of non accurate none nones
+    Given two patient summaries, flatten and match keys, 
+    then compute matching scores & statistics.
     '''
+    flat = flatten_dict(gold, pred)
     scorer = Scorer(score_types)
     scores = {}
     stats = {'total': len(flat)}
@@ -370,12 +334,8 @@ def summary_evaluation(path, score_types=['bleu', 'rouge', 'bert']):
     df = df.sample(frac=1).reset_index(drop=True)
     scores_path = path.replace('.jsonl', '_scores.jsonl')
     for i, row in tqdm(df.iterrows(), total=df.shape[0], desc="Evaluating pairs of patient summaries"):
-
-        # Flatten patient summaries and match entries
-        flat = flatten_dict(row['gold'], row['pred'])
-
         # Compute summary statistics
-        scores, stats = summary_statistics(flat, score_types=score_types)
+        scores, stats = summary_statistics(row['gold'], row['pred'], score_types)
         for stat_type, stat in stats.items():
             df.loc[i, stat_type] = stat
         
