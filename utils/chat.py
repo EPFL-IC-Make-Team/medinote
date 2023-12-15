@@ -130,26 +130,6 @@ async def chat_gpt_3(
     ''' GPT 3.5 chat function '''
     return await openai_chat(messages,"gpt-3.5-turbo", temperature, max_retries)
 
-class Chat(): 
-    ''' Chat class to be used in dispatch_openai_requests '''
-    def __init__(self, model_name='gpt-4-turbo'):
-        self.model_name = model_name
-        if model_name == 'gpt-4-turbo': 
-            self.chat_function = chat_gpt_4_turbo
-        elif model_name == 'gpt-3':
-            self.chat_function = chat_gpt_3
-        else:
-            raise NotImplementedError(f"Chat function not implemented for model {model_name}")
-
-    def __call__(self, usr_prompt, sys_prompt, temperature=0.2):
-        ''' 
-        Call chat. Example usage: 
-        chat = Chat(model_name='gpt-4-turbo')
-        chat(usr_prompt, sys_prompt, temperature)
-        '''
-        messages = build_messages(sys_prompt, usr_prompt)
-        return self.chat_function(messages, temperature)
-    
 async def dispatch_openai_requests(
       messages_list: List[List[dict]],
       chat : Callable[[List[dict]], Awaitable[str]],
