@@ -250,28 +250,30 @@ def build_messages(system_prompt: str, built_user_prompt: str):
         {"role": "user", "content": built_user_prompt}
     ]
 
-def new_sub_batch(row, msg_len): 
-  return {"sub_batch": pd.DataFrame([row]) , "Total_nb_token": msg_len}
+def new_sub_batch(row, msg_len):
+    # Create a new DataFrame with the original index
+    return {"sub_batch": pd.DataFrame([row], index=[row.name]), "Total_nb_token": msg_len}
 
-def partition(dataframe, max_token_per_partition, model): 
-  ''' Build most optimal partitions given max number of tokens, model and messages. '''
-  sub_batches = []
-  for _, row in tqdm(dataframe.iterrows(), total = dataframe.shape[0]):
-      msg_len = num_tokens_from_messages(row['messages'], model)
-      batch_len = len(sub_batches)
-      if batch_len == 0 : 
-          sub_batches.append(new_sub_batch(row, msg_len))
-      else : 
-        current_partion = sub_batches[-1]
-        if current_partion["Total_nb_token"] + msg_len <= max_token_per_partition : 
-            current_partion["sub_batch"] = pd.concat([current_partion["sub_batch"], pd.DataFrame([row])], ignore_index=True)
-            current_partion["Total_nb_token"] += msg_len
-        else: sub_batches.append(new_sub_batch(row, msg_len))
+def partition(dataframe, max_token_per_partition, model):
+    print(dataframe.index)
+    ''' Build most optimal partitions given max number of tokens, model and messages. '''
+    sub_batches = []
+    for _, row in tqdm(dataframe.iterrows(), total=dataframe.shape[0], desc="Building sub-batches"):
+        msg_len = num_tokens_from_messages(row['messages'], model)
+        batch_len = len(sub_batches)
 
-  print(f"Created {len(sub_batches)} sub-batches with token number:" +\
-         f"{[(sub_batch['sub_batch'].shape[0],sub_batch['Total_nb_token']) for sub_batch in sub_batches]}")
-  
-  return [(sb['sub_batch'], sb['Total_nb_token']) for sb in sub_batches]
+        if batch_len == 0:
+            sub_batches.append(new_sub_batch(row, msg_len))
+        else:
+            current_partition = sub_batches[-1]
+            if current_partition["Total_nb_token"] + msg_len <= max_token_per_partition:
+                # Concatenating while keeping the original index
+                current_partition["sub_batch"] = pd.concat([current_partition["sub_batch"], pd.DataFrame([row], index=[row.name])], ignore_index=False)
+                current_partition["Total_nb_token"] += msg_len
+            else:
+                sub_batches.append(new_sub_batch(row, msg_len))
+    
+    return [d.values() for d in sub_batches]
 
 
 def make_prompts(

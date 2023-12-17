@@ -101,7 +101,8 @@ class Scorer():
     def GPT_ranker(self, 
                    pairs,
                    model_name='gpt-4-1106-preview', 
-                   batch_size=10, 
+                   max_tokens = 300000,
+                   one_call_batch_size = 20, 
                    temperature=0.0):
         ''' 
         For each pair of gold and pred strings, ask GPT-4 to pick which one is the best.
@@ -136,19 +137,36 @@ class Scorer():
             else: 
                 usr_prompt = "Directly select your final answer as follows: \n\nAnswer: <your answer>"
             messages.append(build_messages(sys_prompt, usr_prompt))
-            dataset.iloc[i]['switch'] = switch
+            dataset.loc[i,'switch'] = switch
         
+        dataset['messages'] = messages
+
+        print("Creating sub-batches...")
+        # Builds a partitions which have total number of tokens < max_tokens
+        sub_batches = partition(dataframe = dataset['messages'].to_frame(), max_token_per_partition=max_tokens,model = model_name)
+        
+        dataset.drop(columns = ["messages"], inplace = True)
+
         # Generate answers by batches
-        for i in tqdm(range(0, dataset.shape[0], batch_size), desc="Ranking pairs of clinical notes"):
-            batch_df = dataset.iloc[i:i+batch_size]
+        for sub_batch in tqdm(sub_batches, desc="Ranking pairs of clinical notes", total = len(sub_batches)):
             try:
                 answers = generate_answers(
-                    messages_list = messages[i:i+batch_size],
+                    messages_list = sub_batch['messages'].tolist(),
                     formatting=lambda x: x,
                     chat=chat_gpt_4_turbo,
                     temperature=temperature
                 )
-                for j, response in enumerate(answers):
+
+                answers = [response.split('Answer: ')[1] for response in answers]
+                if self.cot:
+                    explanations =  [response.split('Explanation: ')[1].split('Answer: ')[0].strip() for response in answers]
+                    dataset.loc[sub_batch.index,'explanation'] = explanations
+                winners = ['tie' if ('3' in answer) else
+                        'gold' if ('1' in answer and switch == 0) or ('2' in answer and switch == 1) else
+                        'pred' for answer,switch in zip(answers, batch_df['switch'])]
+
+
+                """for j, response in enumerate(answers):
                     answer = response.split('Answer: ')[1]
                     explanation = None if not self.cot else response.split('Explanation: ')[1].split('Answer: ')[0].strip()
                     switch = batch_df.iloc[i+j]['switch']
@@ -161,17 +179,40 @@ class Scorer():
                     else:
                         raise ValueError(f"Invalid answer {answer}.")
                     dataset.iloc[i+j]['winner'] = winner
-                    dataset.iloc[i+j]['explanation'] = explanation
-            except: 
-                answers = [None] * batch_df.shape[0]
+                    dataset.iloc[i+j]['explanation'] = explanation"""
+                dataset.loc[sub_batch.index,'winner'] = winners
+                
+
+            except Exception as e:
+                print(e)
         return list(dataset['winner'])
     
+   
+    def scorer_formatting(self, answer):
+        """Format the scoring answer from GPT-4 
+        to get the similarity scores and explanaion if cot"""
+        similarity_score_pattern = r"similarity_score:\s*(\d+)"
+        similarity_scores = re.findall(similarity_score_pattern, answer)
+        int_answers = [int(score) for score in similarity_scores]
+        if len(int_answers) == 0:
+            raise ValueError(f"Invalid format {answer}.")
+        if self.cot:
+            explanation_pattern = r"explanation: '([^']+)'"
+            explanations = re.findall(explanation_pattern, answer)
+            if len(explanations) != len(int_answers):
+                raise ValueError(f"Invalid format {answer}.")
+            return int_answers, explanations
+        else:
+            return int_answers
+  
+
     
     def GPT_scorer(self, 
                    pairs,
                    model_name='gpt-4-1106-preview',
                    temperature=0.0,
-                   batch_size=10):
+                   max_tokens = 700,
+                   one_call_batch_size=10):
         ''' 
         Given a model’s answer and GPT-4' answer (silver label), 
         ask GPT-4 with CoT to compute the similarity between the two answers on a scale of 1 to 10. 
@@ -190,43 +231,48 @@ class Scorer():
         '''
 
         # Build prompts for GPT-4 from gold/pred pairs
-        dataset = pd.DataFrame(pairs)
-        messages = []
-        dataset[['similarity', 'explanation', 'model_name']] = [None, None, model_name]
-        for i, pair in tqdm(dataset.iterrows(), total=len(pairs), desc="Building rank prompts"): 
-            gold = pair['gold']
-            pred = pair['pred']
-            switch = np.random.choice([0, 1])
-            option1 = gold if switch == 0 else pred
-            option2 = gold if switch == 1 else pred
-            sys_prompt = f"Compare the two clinical notes and rate how similar they are to each other on a scale of 1 to 10.\
-                \n\nNote 1:\n\n{option1}\n\nNote 2:\n\n{option2}"
-            if self.cot: 
-                usr_prompt = "In one sentence, explain your reasoning in comparing the two clinical notes, then select your final answer. \
-                    Format your response as follows: \n\nExplanation: <your explanation>\n\nAnswer: <your answer>"
-            else: 
-                usr_prompt = "Directly respond with your final answer as follows: \n\nAnswer: <your answer>"
-            messages.append(build_messages(sys_prompt, usr_prompt))
+        dataset = pd.DataFrame({'pairs_list': [pairs[i: i+one_call_batch_size] for i in range(0, len(pairs), one_call_batch_size)]})
 
+        dataset[['similarity', 'explanation', 'model_name']] = [None , None, model_name]
+        messages = []
+        for _, pair_list in tqdm(dataset.iterrows(), total=dataset.shape[0], desc="Building score prompts"): 
+            golds = [pair['gold'] for pair in pair_list['pairs_list']]
+            preds = [pair['pred'] for pair in pair_list['pairs_list']]
+            switches = [np.random.choice([0, 1]) for _ in range(len(golds))]
+            optionsA = [gold if switch == 0 else pred for gold, pred, switch in zip(golds, preds, switches)]
+            optionsB = [gold if switch == 1 else pred for gold, pred, switch in zip(golds, preds, switches)]
+            sys_prompt = f"For each pair of clinical notes (pair i, NoteA, NoteB) you are given, compare them and rate how similar they are to each other on a scale of 1 to 10. "
+            
+            if self.cot:
+                sys_prompt += "Explain in one sentence your reasoning in comparing the two clinical notes, then select your final answer.\n \
+                    Format your response as follows: a list of dictionnaries [{pair_number : i, explanation: <your explanation>, similarity_score: <your answer>}]"
+            else:
+                sys_prompt += "Directly respond with your final answers as follows: a list of dictionnaries [{pair_number : i, similarity_score: <your answer>}]"
+            
+            usr_prompt = '\n'.join([f"(pair {i}, {optionA}, {optionB})" for i, (optionA, optionB) in enumerate(zip(optionsA, optionsB))])
+            messages.append(build_messages(sys_prompt, usr_prompt))
+        
+        sub_batches = partition(dataframe = pd.DataFrame({'messages': messages}), max_token_per_partition=max_tokens,model = model_name)
         # Generate answers by batches
-        for i in tqdm(range(0, dataset.shape[0], batch_size), desc="Scoring pairs of clinical notes"):
-            batch_df = dataset.iloc[i:i+batch_size]
+        for i, (sub_batch, nb_tokens) in enumerate(sub_batches):
+            print(f"Sub_batch {i+1}/{len(sub_batches)}: {sub_batch.shape[0]} calls, {nb_tokens} total tokens: {nb_tokens/1000 * 0.01}$")
             try:
                 answers = generate_answers(
-                    messages_list = messages[i:i+batch_size],
-                    formatting=lambda x: x,
-                    chat=chat_gpt_4_turbo,
+                    messages_list = sub_batch['messages'].tolist(),
+                    formatting=self.scorer_formatting,
+                    chat=chat_gpt_3,#chat_gpt_4_turbo,
                     temperature=temperature
-                )
-                for j, response in enumerate(answers):
-                    answer = response.split('Answer: ')[1]
-                    explanation = None if not self.cot else response.split('Explanation: ')[1].split('Answer: ')[0].strip()
-                    similarity = int(re.findall(r'\d+', answer)[0])
-                    dataset.iloc[i+j]['similarity'] = similarity
-                    dataset.iloc[i+j]['explanation'] = explanation
-            except: 
-                answers = [None] * batch_df.shape[0]
-        return list(dataset['similarity'])
+                ) # answer is list of list
+                explanations =  [None] * sub_batch.shape[0] if not self.cot else [answer[1] for answer in answers]
+                similarities = answers if not self.cot else [answer[0] for answer in answers]
+                dataset.loc[sub_batch.index,'similarity'] = pd.Series(similarities, index = sub_batch.index)
+                dataset.loc[sub_batch.index,'explanation'] = pd.Series(explanations, index = sub_batch.index)
+            except Exception as e:
+                print(e)
+        return sum(dataset['similarity'], []) #concateanate the similarities list of list into one list
+
+
+
         
 
 # ----------------------- 1 - Patient Summary evaluation ----------------------- #
@@ -261,8 +307,8 @@ def match_list(gold_list, pred_list, scorer_type='bert'):
         # Find the best match in pred_list
         if len(pred_list_) > 0:
             for i, pred_item in enumerate(pred_list_):
-                gold_string = ", ".join(str(value) for value in gold_item.values() if value is not None)
-                pred_string = ", ".join(str(value) for value in pred_item.values() if value is not None)
+                gold_string = ", ".join(str(value) for value in gold_item.values() if value is not NONE_FIELD)
+                pred_string = ", ".join(str(value) for value in pred_item.values() if value is not NONE_FIELD)
                 score = scorer(gold_string, pred_string)[scorer_type]
                 if max_score is None or score > max_score:
                     max_score = score
@@ -283,7 +329,7 @@ def match_list(gold_list, pred_list, scorer_type='bert'):
 def flatten_dict(gold, pred, parent_key=''):
     '''
     Flattening utility function; 
-    Given two dictionaries, match corresponding keys and compute matching score between their values. 
+    Given two dictionaries, match corresponding keys and flatten them.
 
     Arguments: 
         - gold (dict): dictionary of gold values
