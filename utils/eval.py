@@ -187,10 +187,25 @@ class Scorer():
                 print(e)
         return list(dataset['winner'])
     
-   
+    def ranker_formatting(self, answer):
+        """Format the ranking answer from GPT-4
+        to get the winner and explanaion if cot as list of int/string"""
+        winner_pattern = r"winner:\s*(\w+)"
+        winners = re.findall(winner_pattern, answer)
+        if len(winners) == 0:
+            raise ValueError(f"Invalid format {answer}.")
+        if self.cot:
+            explanation_pattern = r"explanation:'([^']+)'"
+            explanations = re.findall(explanation_pattern, answer)
+            if len(explanations) != len(winners):
+                raise ValueError(f"Invalid format {answer}.")
+            return winners, explanations
+        else:
+            return winners
+
     def scorer_formatting(self, answer):
         """Format the scoring answer from GPT-4 
-        to get the similarity scores and explanaion if cot"""
+        to get the similarity scores and explanaion if cot as list of int/string"""
         similarity_score_pattern = r"similarity_score:\s*(\d+)"
         similarity_scores = re.findall(similarity_score_pattern, answer)
         int_answers = [int(score) for score in similarity_scores]
