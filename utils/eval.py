@@ -118,84 +118,66 @@ class Scorer():
 
         TODO: Save the explanations and scores in a separate file.
         '''
+        dataset = pd.DataFrame({'pairs_list': [pairs[i: i+one_call_batch_size] for i in range(0, len(pairs), one_call_batch_size)]})
 
-        # Build prompts for GPT-4 from gold/pred pairs
-        dataset = pd.DataFrame(pairs)
         dataset[['winner', 'explanation', 'switch', 'model_name']] = [None, None, None, model_name]
-        messages = []
-        for i, pair in tqdm(dataset.iterrows(), total=len(pairs), desc="Building rank prompts"): 
-            gold = pair['gold']
-            pred = pair['pred']
-            switch = np.random.choice([0, 1])
-            option1 = gold if switch == 0 else pred
-            option2 = gold if switch == 1 else pred
-            sys_prompt = f"Compare the two clinical notes and rank which one is of higher quality. \
-                \n\nAnswer 1: {option1}\n\nAnswer 2: {option2}\n\nAnswer 3: They are equally good."
-            if self.cot: 
-                usr_prompt = "In one sentence, explain your reasoning in comparing the two clinical notes, then select your final answer. \
-                    Format your response as follows: \n\nExplanation: <your explanation>\n\nAnswer: <your answer>"
-            else: 
-                usr_prompt = "Directly select your final answer as follows: \n\nAnswer: <your answer>"
-            messages.append(build_messages(sys_prompt, usr_prompt))
-            dataset.loc[i,'switch'] = switch
-        
-        dataset['messages'] = messages
 
+        messages = []
+        for i, pair_list in tqdm(dataset.iterrows(), total=dataset.shape[0], desc="Building score prompts"): 
+            golds = [pair['gold'] for pair in pair_list['pairs_list']]
+            preds = [pair['pred'] for pair in pair_list['pairs_list']]
+            switches = [np.random.choice([0, 1]) for _ in range(len(golds))]
+            optionsA = [gold if switch == 0 else pred for gold, pred, switch in zip(golds, preds, switches)]
+            optionsB = [gold if switch == 1 else pred for gold, pred, switch in zip(golds, preds, switches)]
+            
+            sys_prompt = f"For each pair of clinical notes (pair i, NoteA, NoteB) you are given, compare them and rank which one is of higher quality. "
+            if self.cot:
+                sys_prompt += "Explain in one sentence your reasoning in comparing the two clinical notes, then select your final answer.\n \
+                    Format your response as follows: a list of dictionnaries [{pair_number : i, explanation: <your explanation>, higher_quality_note: <your answer>}]."
+            else:
+                sys_prompt += "Directly respond with your final answers as follows: a list of dictionnaries [{pair_number : i, higher_quality_note: <your answer>}]"
+            
+            sys_prompt += "<your answer should be 'NoteA' if NoteA has better quality, 'NoteB' if NoteB has better quality, or 'tie' if they have the same quality."
+            usr_prompt = '\n'.join([f"(pair {i}, {optionA}, {optionB})" for i, (optionA, optionB) in enumerate(zip(optionsA, optionsB))])
+            
+            messages.append(build_messages(sys_prompt, usr_prompt))
+            dataset.at[i,'switch'] = switches
+        
         print("Creating sub-batches...")
         # Builds a partitions which have total number of tokens < max_tokens
-        sub_batches = partition(dataframe = dataset['messages'].to_frame(), max_token_per_partition=max_tokens,model = model_name)
-        
-        dataset.drop(columns = ["messages"], inplace = True)
+        sub_batches = partition(dataframe = pd.concat([pd.DataFrame({'messages': messages}),dataset['switch']], axis =1), max_token_per_partition=max_tokens,model = model_name)
 
         # Generate answers by batches
-        for sub_batch in tqdm(sub_batches, desc="Ranking pairs of clinical notes", total = len(sub_batches)):
+        for i, (sub_batch, nb_tokens) in enumerate(sub_batches):
+            print(f"Sub_batch {i+1}/{len(sub_batches)}: {sub_batch.shape[0]} calls, {nb_tokens} total tokens: {nb_tokens/1000 * 0.01}$")
             try:
                 answers = generate_answers(
                     messages_list = sub_batch['messages'].tolist(),
-                    formatting=lambda x: x,
-                    chat=chat_gpt_4_turbo,
+                    formatting=self.ranker_formatting,
+                    chat=chat_gpt_3,#chat_gpt_4_turbo,
                     temperature=temperature
-                )
-
-                answers = [response.split('Answer: ')[1] for response in answers]
-                if self.cot:
-                    explanations =  [response.split('Explanation: ')[1].split('Answer: ')[0].strip() for response in answers]
-                    dataset.loc[sub_batch.index,'explanation'] = explanations
-                winners = ['tie' if ('3' in answer) else
-                        'gold' if ('1' in answer and switch == 0) or ('2' in answer and switch == 1) else
-                        'pred' for answer,switch in zip(answers, batch_df['switch'])]
-
-
-                """for j, response in enumerate(answers):
-                    answer = response.split('Answer: ')[1]
-                    explanation = None if not self.cot else response.split('Explanation: ')[1].split('Answer: ')[0].strip()
-                    switch = batch_df.iloc[i+j]['switch']
-                    if '1' in answer: 
-                        winner = 'gold' if switch == 0 else 'pred'
-                    elif '2' in answer:
-                        winner = 'gold' if switch == 1 else 'pred'
-                    elif '3' in answer:
-                        winner = 'tie'
-                    else:
-                        raise ValueError(f"Invalid answer {answer}.")
-                    dataset.iloc[i+j]['winner'] = winner
-                    dataset.iloc[i+j]['explanation'] = explanation"""
-                dataset.loc[sub_batch.index,'winner'] = winners
+                ) # answer is list of list
+                explanations =  [None] * sub_batch.shape[0] if not self.cot else [answer[1] for answer in answers]
+                winners = [['tie' if (answer == 'tie') else
+                        'gold' if (answer == 'NoteA' and switch == 0) or (answer == 'NoteB' and switch == 1) else
+                        'pred' for answer,switch in zip(winner_list, switches)]
+                        for winner_list, switches in zip(answers, sub_batch['switch'].tolist())]
                 
-
+                dataset.loc[sub_batch.index,'winner'] = pd.Series(winners, index = sub_batch.index)
+                dataset.loc[sub_batch.index,'explanations'] = pd.Series(explanations, index = sub_batch.index)
             except Exception as e:
                 print(e)
-        return list(dataset['winner'])
+        return sum(dataset['winner'], []) #concateanate the similarities list of list into one list
     
     def ranker_formatting(self, answer):
         """Format the ranking answer from GPT-4
-        to get the winner and explanaion if cot as list of int/string"""
-        winner_pattern = r"winner:\s*(\w+)"
+        to get the winner and explanaion if cot as list of int/string""" 
+        winner_pattern = r"higher_quality_note: '([^']+)'"
         winners = re.findall(winner_pattern, answer)
         if len(winners) == 0:
             raise ValueError(f"Invalid format {answer}.")
         if self.cot:
-            explanation_pattern = r"explanation:'([^']+)'"
+            explanation_pattern = r"explanation: '([^']+)'"
             explanations = re.findall(explanation_pattern, answer)
             if len(explanations) != len(winners):
                 raise ValueError(f"Invalid format {answer}.")
@@ -340,7 +322,6 @@ def match_list(gold_list, pred_list, scorer_type='bert'):
 
     return matched_gold, matched_pred
 
-
 def flatten_dict(gold, pred, parent_key=''):
     '''
     Flattening utility function; 
@@ -397,34 +378,60 @@ def flatten_dict(gold, pred, parent_key=''):
                         
     return flat if parent_key != '' else dict(flat)
 
-def summary_statistics(gold, pred, score_types=['rouge', 'bleu', 'bert']):
+def get_counts_and_clean_dict(flattened_dict):
     '''
-    Given two patient summaries, flatten and match keys, 
-    then compute matching scores & statistics.
+    Given a flattened dictionary, compute the number of missing keys, extra keys, 
+    common keys with None value, common keys with None value in gold, common keys with None value in pred.
+    also returns remaining common keys (with no nones) for further evaluation.
     '''
-    flat = flatten_dict(gold, pred)
-    scorer = Scorer(score_types)
-    scores = {}
-    stats = {'total': len(flat)}
-    for key in ['missing_keys', 'extra_keys', 'common', 'common_none', 'gold_none', 'pred_none']:
-        stats[key] = 0
-    for key, (gold, pred) in flat.items():
+    counts = {'missing_keys' : 0, 'extra_keys': 0, 'common': 0, 'common_none' : 0, 'gold_none' : 0, 'pred_none' : 0}
+    clean_flat_dict = {}
+    for key, (gold, pred) in flattened_dict.items():
         if gold == NO_SUCH_KEY:
-            stats['extra_keys'] += 1
+            counts['extra_keys'] += 1
         if pred == NO_SUCH_KEY:
-            stats['missing_keys'] += 1
+            counts['missing_keys'] += 1
         if gold == NONE_FIELD:
             if pred == NONE_FIELD:
-                stats['common_none'] += 1
+                counts['common_none'] += 1
             else:
-                stats['gold_none'] += 1
+                counts['gold_none'] += 1
         else:
             if pred == NONE_FIELD:
-                stats['pred_none'] += 1
+                counts['pred_none'] += 1
             else:
-                stats['common'] += 1
-                scores[key] = scorer([{'gold': gold, 'pred': pred}])
-    return scores, stats
+                counts['common'] += 1
+                clean_flat_dict[key] = (gold, pred)
+    return counts, clean_flat_dict
+
+def summary_statistics(golds, preds, score_types=['rouge', 'bleu', 'bert']):
+    '''
+    Given several gold,pred patient summaries, flatten and match keys, 
+    then compute matching scores & counts.
+    '''
+    if golds.shape[0] != preds.shape[0]:
+        raise ValueError("Gold and pred lists must be of same length.")
+    
+    stats_df = pd.concat([golds, preds], axis=1)
+
+    stats_df['flat_dicts'] = stats_df.apply(lambda row: flatten_dict(row['gold'], row['pred']), axis=1)
+    stats_df.drop(['gold', 'pred'], axis=1, inplace=True)
+    stats_df[['counts','cleaned_flat_dicts']] = stats_df['flat_dicts'].apply(get_counts_and_clean_dict)
+    stats_df.drop(['flat_dicts'], axis=1, inplace=True)
+
+    scorer = Scorer(score_types)
+
+    stats_df['keys'] = stats_df['cleaned_flat_dicts'].apply(lambda x: list(x.keys()))
+    stats_df['gold'] = stats_df['cleaned_flat_dicts'].apply(lambda x: [value[0] for value in x.values()])
+    stats_df['pred'] = stats_df['cleaned_flat_dicts'].apply(lambda x: [value[1] for value in x.values()])
+    stats_df.drop(['cleaned_flat_dicts'], axis=1, inplace=True)
+
+    pairs_df = stats_df.explode(['keys', 'gold', 'pred'])
+    pairs_df['scores'] = scorer(pairs_df['gold'], pairs_df['pred'])
+    
+    stats_df['scores'] = pairs_df.groupby(pairs_df.index)['scores'].agg(list)
+    
+    return stats_df
 
 def summary_evaluation(path, score_types=['bleu', 'rouge', 'bert']): 
     '''
@@ -438,6 +445,12 @@ def summary_evaluation(path, score_types=['bleu', 'rouge', 'bert']):
     dataset = load_file(path)
     dataset = dataset.sample(frac=1).reset_index(drop=True)
     scores_path = path.replace('.jsonl', '_scores.jsonl')
+
+    stats = summary_statistics(dataset['gold'], dataset['pred'], score_types)
+
+    scores = stats['scores']
+    counts = stats['counts']  
+
     for i, row in tqdm(dataset.iterrows(), total=dataset.shape[0], desc="Evaluating pairs of patient summaries"):
         # Compute summary statistics
         scores, stats = summary_statistics(row['gold'], row['pred'], score_types)
