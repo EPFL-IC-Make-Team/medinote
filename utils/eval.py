@@ -33,7 +33,7 @@ NONE_MATCH  = "None_Match"
 NO_SUCH_KEY = "no_such_key"
 NONE_FIELD = "None"
 
-COUNTS_TYPES = ['missing_keys', 'extra_keys', 'common_keys', 'common', 'gold_none', 'pred_none']
+COUNTS_TYPES = ['missing_keys', 'extra_keys', 'common_none',  'gold_none', 'pred_none', 'common', 'total']
 
 # ----------------------- Scoring functions (BLEU/ROUGE/BERT/GPT-4) ----------------------- #
 
@@ -52,7 +52,7 @@ class Scorer():
     def __call__(self, pairs): 
         '''
         Given a list of dictionaries with gold and predicted pairs, 
-        returns a dictionary of lists with all metrics computed for each pair.
+        returns a dataframe with the different computed scores.
 
         Example usage: 
             pairs = [{'gold': 'x', 'pred': 'y'}]
@@ -60,44 +60,48 @@ class Scorer():
             scores = await scorer(pairs)
             --> scores = [{'bleu': 0.5, 'rouge': 0.3, 'bert': 0.7}]
         '''
-        scores = {}
+        pairs_df = pd.DataFrame(pairs)
         if 'bleu' in self.score_types:
-            scores.update(self.BLEU_scorer(pairs))
+            pairs_df['bleu'] = self.BLEU_scorer(pairs)['bleu']
         if 'rouge' in self.score_types:
-            scores.update(self.ROUGE_scorer(pairs))
+            rouges = self.ROUGE_scorer(pairs)
+            for metric in rouges.keys():
+                pairs_df[metric] = rouges[metric]
         if 'bert' in self.score_types:
-            scores.update(self.BERT_scorer(pairs))
+            pairs_df['bert'] = self.BERT_scorer(pairs)['bert']
         if 'gpt_rank' in self.score_types:
-            scores['gpt_rank'] = self.GPT_ranker(pairs)
+            pairs_df['gpt_rank'] = self.GPT_ranker(pairs)
         if 'gpt_score' in self.score_types:
-            scores['gpt_score'] = self.GPT_scorer(pairs)
-        return scores
+            pairs_df['gpt_score'] = self.GPT_scorer(pairs)
+
+        return pairs_df
     
     def BLEU_scorer(self, pairs):
         ''' BLEU score for summary evaluation (precision-oriented)'''
-        scores = {'bleu': []}
-        for pair in pairs:
-            score = BLEU_SCORER.compute(
-                predictions=[pair['pred']], references=[pair['gold']])['bleu']
-            scores['bleu'].append(score)
-        return scores
+        bleu_scores = {'bleu': [BLEU_SCORER.compute(predictions=[pair['pred']],
+                                                    references=[pair['gold']])['bleu'] 
+                                                for pair in tqdm(pairs, total = len(pairs) ,desc="Computing BLEU scores")]}
+        return bleu_scores
     
     def ROUGE_scorer(self, pairs):
         ''' ROUGE score for summary evaluation (recall-oriented)'''
-        scores = {'rouge1': [], 'rouge2': [], 'rougeL': [], 'rougeLsum': []}
-        for pair in pairs:
-            rouge = ROUGE_SCORER.compute(
+        rouges = [ROUGE_SCORER.compute(
                 predictions=[pair['pred']], references=[pair['gold']])
-            for metric in rouge.keys():
-                scores[metric].append(rouge[metric])
+                for pair in tqdm(pairs, total = len(pairs) ,desc="Computing ROUGE scores")]
+        
+        metrics = rouges[0].keys()
+        scores = {metric: [rouge[metric] for rouge in rouges] for metric in metrics} 
         return scores
 
     def BERT_scorer(self, pairs):
-        scores = {'bert': []}
-        for pair in pairs:
-            score = BERT_SCORER.compute(
-                predictions=[pair['pred']], references=[pair['gold']], lang='en')['f1'][0]
-            scores['bert'].append(score)
+        print("Computing BERT scores...")
+        scores = {'bert': 
+            BERT_SCORER.compute(
+                predictions=[pair['pred'] for pair in pairs],
+                references=[pair['gold'] for pair in pairs],
+                lang='en')['f1']
+        }
+        print('BERTscores computed.')
         return scores
     
     def GPT_ranker(self, 
@@ -348,19 +352,19 @@ def flatten_dict(gold, pred, parent_key=''):
                     gold_list = gold_value, pred_list = pred[gold_key])
                 for i, gold_list_val in enumerate(matched_gold):
                     if isinstance(gold_list_val, str):
-                        flat.append(f"{parent_key}{gold_key}/{i}", (gold_list_val, matched_pred[i]))
+                        flat.append((f"{parent_key}{gold_key}/{i}", (gold_list_val, matched_pred[i])))
                     if isinstance(gold_list_val, dict):
                         flat.extend(flatten_dict(gold_list_val, matched_pred[i], 
                                                  parent_key=f"{parent_key}{gold_key}/{i}/"))
         else: # No match for gold key
             if isinstance(gold_value, str):
-                flat.append(f"{parent_key}{gold_key}", (gold_value, NO_SUCH_KEY))
+                flat.append((f"{parent_key}{gold_key}", (gold_value, NO_SUCH_KEY)))
             if isinstance(gold_value, dict):
                 flat.extend(flatten_dict(gold_value, {}, parent_key=f"{parent_key}{gold_key}/"))
             if isinstance(gold_value, list):
                 for i, val in enumerate(gold_value):
                     if isinstance(val, str):
-                        flat.append(f"{parent_key}{gold_key}/{i}", (gold_value, NO_SUCH_KEY))
+                        flat.append((f"{parent_key}{gold_key}/{i}", (gold_value, NO_SUCH_KEY)))
                     if isinstance(val, dict):
                         flat.extend(flatten_dict(
                             val, {}, parent_key=f"{parent_key}{gold_key}/{i}/"))
@@ -368,13 +372,13 @@ def flatten_dict(gold, pred, parent_key=''):
     for pred_key, pred_value in pred.items():
         if pred_key not in gold.keys():
             if isinstance(pred_value, str):
-                flat.append(f"{parent_key}{pred_key}", (NO_SUCH_KEY, pred_value))
+                flat.append((f"{parent_key}{pred_key}", (NO_SUCH_KEY, pred_value)))
             if isinstance(pred_value, dict):
                 flat.extend(flatten_dict({}, pred_value, parent_key=f"{parent_key}{pred_key}/"))
             if isinstance(pred_value, list):
                 for i, val in enumerate(pred_value):
                     if isinstance(val, str):
-                        flat.append(f"{parent_key}{pred_key}/{i}", (NO_SUCH_KEY, pred_value))
+                        flat.append((f"{parent_key}{pred_key}/{i}", (NO_SUCH_KEY, pred_value)))
                     if isinstance(val, dict):
                         flat.extend(flatten_dict({}, val, parent_key=f"{parent_key}{pred_key}/{i}"))
                         
@@ -387,6 +391,7 @@ def get_counts_and_clean_dict(flattened_dict):
     also returns remaining common keys (with no nones) for further evaluation.
     '''
     counts = {key: 0 for key in COUNTS_TYPES}
+    counts['total']= len(flattened_dict)
     clean_flat_dict = {}
     for key, (gold, pred) in flattened_dict.items():
         if gold == NO_SUCH_KEY:
@@ -404,6 +409,7 @@ def get_counts_and_clean_dict(flattened_dict):
             else:
                 counts['common'] += 1
                 clean_flat_dict[key] = (gold, pred)
+
     return counts, clean_flat_dict
 
 def summary_statistics(golds, preds, score_types=['rouge', 'bleu', 'bert']):
@@ -414,35 +420,46 @@ def summary_statistics(golds, preds, score_types=['rouge', 'bleu', 'bert']):
         - a row for each gold,pred dictionary pair,
         - a column scores containing a dictionary of scores for each key
     '''
-
     if golds.shape[0] != preds.shape[0]:
         raise ValueError("Gold and pred lists must be of same length.")
     
     stats_df = pd.concat([golds, preds], axis=1)
-
     stats_df['flat_dicts'] = stats_df.apply(lambda row: flatten_dict(row['gold'], row['pred']), axis=1)
     stats_df.drop(['gold', 'pred'], axis=1, inplace=True)
-    stats_df[['counts','cleaned_flat_dicts']] = stats_df['flat_dicts'].apply(get_counts_and_clean_dict)
+
+    stats_df[['counts','cleaned_flat_dicts']] = pd.DataFrame(
+                        stats_df['flat_dicts'].apply(get_counts_and_clean_dict).tolist(),
+                        columns=['counts', 'cleaned_flat_dicts'])
+    
+    stats_df.drop(['flat_dicts'], axis=1, inplace=True)
+
     for count_type in COUNTS_TYPES:
         stats_df[count_type] = stats_df['counts'].apply(lambda x: x[count_type])
     stats_df.drop(['counts'], axis=1, inplace=True)
-    stats_df.drop(['flat_dicts'], axis=1, inplace=True)
-
+    
     scorer = Scorer(score_types)
 
     stats_df['keys'] = stats_df['cleaned_flat_dicts'].apply(lambda x: list(x.keys()))
-    stats_df['gold'] = stats_df['cleaned_flat_dicts'].apply(lambda x: [value[0] for value in x.values()])
-    stats_df['pred'] = stats_df['cleaned_flat_dicts'].apply(lambda x: [value[1] for value in x.values()])
+    stats_df['pairs'] = stats_df['cleaned_flat_dicts'].apply(lambda x: list(x.values()))
     stats_df.drop(['cleaned_flat_dicts'], axis=1, inplace=True)
 
-    pairs_df = stats_df.explode(['keys', 'gold', 'pred'])
-    pairs_df['scores'] = scorer(pairs_df['gold'], pairs_df['pred'])
+
+    pairs_df = stats_df[['keys', 'pairs']].explode(['keys', 'pairs'])
+    pairs_df['pairs'] = pairs_df['pairs'].apply(lambda x: {'gold': x[0], 'pred': x[1]})
+    scores = scorer(pairs_df['pairs'])
+    for metric in scores.columns:
+        pairs_df[metric] = scores[metric]
+
+    grouped = pairs_df.groupby(pairs_df.index).agg(lambda x: list(x))
+
+    for metric in scores.columns:
+        stats_df[metric] = grouped[metric]
     
-    stats_df['scores'] = pairs_df.groupby(pairs_df.index)['scores'].apply(lambda x: dict(zip(x['keys'], x['scores'])))
-    
+    display(stats_df)
+
     return stats_df
 
-def summary_evaluation(path, score_types=['bleu', 'rouge', 'bert']): 
+def summary_evaluation(path, score_types='all'):#['bleu', 'rouge', 'bert']): 
     '''
     1 - Patient summary evaluation
     Run evaluation on a dataframe with 'gold' and 'pred' patient summaries. 
@@ -455,7 +472,7 @@ def summary_evaluation(path, score_types=['bleu', 'rouge', 'bert']):
     dataset = dataset.sample(frac=1).reset_index(drop=True)
     scores_path = path.replace('.jsonl', '_scores.jsonl')
 
-    save_file(dataset, scores_path)
+    #save_file(dataset, scores_path)
     stats = summary_statistics(dataset['gold'], dataset['pred'], score_types)
 
     # Compute average matching scores accrosss all field for each metric for each patient summary
