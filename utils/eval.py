@@ -33,6 +33,8 @@ NONE_MATCH  = "None_Match"
 NO_SUCH_KEY = "no_such_key"
 NONE_FIELD = "None"
 
+COUNTS_TYPES = ['missing_keys', 'extra_keys', 'common_keys', 'common', 'gold_none', 'pred_none']
+
 # ----------------------- Scoring functions (BLEU/ROUGE/BERT/GPT-4) ----------------------- #
 
 class Scorer(): 
@@ -384,7 +386,7 @@ def get_counts_and_clean_dict(flattened_dict):
     common keys with None value, common keys with None value in gold, common keys with None value in pred.
     also returns remaining common keys (with no nones) for further evaluation.
     '''
-    counts = {'missing_keys' : 0, 'extra_keys': 0, 'common': 0, 'common_none' : 0, 'gold_none' : 0, 'pred_none' : 0}
+    counts = {key: 0 for key in COUNTS_TYPES}
     clean_flat_dict = {}
     for key, (gold, pred) in flattened_dict.items():
         if gold == NO_SUCH_KEY:
@@ -408,7 +410,11 @@ def summary_statistics(golds, preds, score_types=['rouge', 'bleu', 'bert']):
     '''
     Given several gold,pred patient summaries, flatten and match keys, 
     then compute matching scores & counts.
+    Retunrs a pandas dataframe with:
+        - a row for each gold,pred dictionary pair,
+        - a column scores containing a dictionary of scores for each key
     '''
+
     if golds.shape[0] != preds.shape[0]:
         raise ValueError("Gold and pred lists must be of same length.")
     
@@ -417,6 +423,9 @@ def summary_statistics(golds, preds, score_types=['rouge', 'bleu', 'bert']):
     stats_df['flat_dicts'] = stats_df.apply(lambda row: flatten_dict(row['gold'], row['pred']), axis=1)
     stats_df.drop(['gold', 'pred'], axis=1, inplace=True)
     stats_df[['counts','cleaned_flat_dicts']] = stats_df['flat_dicts'].apply(get_counts_and_clean_dict)
+    for count_type in COUNTS_TYPES:
+        stats_df[count_type] = stats_df['counts'].apply(lambda x: x[count_type])
+    stats_df.drop(['counts'], axis=1, inplace=True)
     stats_df.drop(['flat_dicts'], axis=1, inplace=True)
 
     scorer = Scorer(score_types)
@@ -429,7 +438,7 @@ def summary_statistics(golds, preds, score_types=['rouge', 'bleu', 'bert']):
     pairs_df = stats_df.explode(['keys', 'gold', 'pred'])
     pairs_df['scores'] = scorer(pairs_df['gold'], pairs_df['pred'])
     
-    stats_df['scores'] = pairs_df.groupby(pairs_df.index)['scores'].agg(list)
+    stats_df['scores'] = pairs_df.groupby(pairs_df.index)['scores'].apply(lambda x: dict(zip(x['keys'], x['scores'])))
     
     return stats_df
 
@@ -446,26 +455,21 @@ def summary_evaluation(path, score_types=['bleu', 'rouge', 'bert']):
     dataset = dataset.sample(frac=1).reset_index(drop=True)
     scores_path = path.replace('.jsonl', '_scores.jsonl')
 
+    save_file(dataset, scores_path)
     stats = summary_statistics(dataset['gold'], dataset['pred'], score_types)
 
-    scores = stats['scores']
-    counts = stats['counts']  
-
-    for i, row in tqdm(dataset.iterrows(), total=dataset.shape[0], desc="Evaluating pairs of patient summaries"):
-        # Compute summary statistics
-        scores, stats = summary_statistics(row['gold'], row['pred'], score_types)
-        for stat_type, stat in stats.items():
-            dataset.loc[i, stat_type] = stat
-        
-        # Compute average matching score for each metric
-        metrics = list(scores[list(scores.keys())[0]].keys())
-        for metric in metrics:
-            avg_score = np.mean([score[metric] for score in scores.values()])
-            dataset.iloc[i][metric] = avg_score
-        if i % 10 == 0:
-            save_file(dataset, scores_path)
-    save_file(dataset, scores_path)
-    return dataset
+    # Compute average matching scores accrosss all field for each metric for each patient summary
+    dataset['scores'] = stats['scores']
+    for metric in score_types:
+        dataset[metric] = stats['scores'].apply(lambda x: np.mean([scores[metric] for scores in x.values()]))
+    
+    for count_type in COUNTS_TYPES:
+        dataset[count_type] = stats[count_type]
+    #Compute average matching scores accross all patient summaries for each metric for each field
+    scores_by_keys = stats.explode('scores').groupby('keys').aggregate(lambda x: np.mean(x.tolist()))
+    
+    
+    return dataset, scores_by_keys
 
 # ----------------------- 2 - Clinical note evaluation ----------------------- #
     
