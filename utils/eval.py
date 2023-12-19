@@ -397,7 +397,8 @@ def match_list(gold_list, pred_list, scorer_type='bert'):
     for _ in range(min_items):
         best_match_index = np.unravel_index(np.argmax(scores, axis=None), scores.shape) # get argmax in scores dimensions (2D)
         new_matched_pred[best_match_index[0]] = pred_list[best_match_index[1]] # add best match pred at right index (matching gold)
-        scores[best_match_index[best_match_index[0]], :] = 0 # remove scores for that match gold
+        scores[best_match_index[best_match_index[0]], :] = 0 # remove scores for that match in gold items
+        scores[:, best_match_index[best_match_index[1]]] = 0 # remove scores for that match in pred items
 
     print(f"new_matched_gold: {new_matched_gold}")
     print(f"new_matched_pred: {new_matched_pred}")
