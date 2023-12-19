@@ -336,7 +336,7 @@ def match_list(gold_list, pred_list, scorer_type='bert'):
     Output:
         - matched_gold (list of dict): same as gold_list,
                         extended with empty dictionnaries if pred_list is longer
-        - matched_pred (list of dict): pred_list reordered to macth gold_list,
+        - matched_pred (list of dict): pred_list reordered to match gold_list,
                         extended with empty dictionnaries if gold_list is longer 
     '''
     scorer = Scorer([scorer_type])
@@ -356,18 +356,18 @@ def match_list(gold_list, pred_list, scorer_type='bert'):
     for gold_item in gold_list:
         max_score = None
         best_match_index = -1
+        print(f"gold_item: {gold_item}")
 
         # Find the best match in pred_list
         if len(pred_list_) > 0:
-            for i, pred_item in enumerate(pred_list_):
-                gold_string = ", ".join(str(value) for value in gold_item.values() if value is not NONE_FIELD)
-                pred_string = ", ".join(str(value) for value in pred_item.values() if value is not NONE_FIELD)
-                score = scorer(gold_string, pred_string)[scorer_type]
-                if max_score is None or score > max_score:
-                    max_score = score
-                    best_match_index = i
-
-            matched_pred.append(pred_list[best_match_index])
+            gold_string = ", ".join(str(value) for value in gold_item.values() if value is not NONE_FIELD)
+            pred_strings = [", ".join(str(value) for value in pred_item.values() if value is not NONE_FIELD)
+                             for pred_item in pred_list_]
+            pairs = [{'gold': gold_string, 'pred': pred_string} for pred_string in pred_strings]
+            scores = scorer(pairs)[scorer_type]
+            print(f"scores: {scores}")
+            best_match_index = np.argmax(scores)
+            matched_pred.append(pred_list_[best_match_index])
             pred_list_.pop(best_match_index)
 
     if len(pred_list_) > 0:
@@ -375,6 +375,32 @@ def match_list(gold_list, pred_list, scorer_type='bert'):
         matched_pred += pred_list_
     else:
         matched_pred.extend([{}] * (len(matched_gold) - len(matched_pred)))
+
+    print(f"matched_gold: {matched_gold}")
+    print(f"matched_pred: {matched_pred}")
+
+    # Other variant: compute scores for each pair and match the best ones
+    # this way, we make sure that we don't consider the best match for the gold items in order, but overall
+    # TODO: keep this variant if it's better (and double-check its correctness)
+    max_items = max(len(gold_list), len(pred_list))
+    new_matched_gold = gold_list.copy() + [{}] * (max_items - len(gold_list))
+    new_matched_pred = [{}] * max_items
+
+    gold_strings = [", ".join(str(value) for value in gold_item.values() if value is not NONE_FIELD) for gold_item in gold_list]
+    pred_strings = [", ".join(str(value) for value in pred_item.values() if value is not NONE_FIELD) for pred_item in pred_list]
+    pairs = [{'gold': gs, 'pred': ps} for gs in gold_strings for ps in pred_strings]
+    print(f"total pairs: {len(pairs)}, all pairs: {pairs}")
+    scores = scorer(pairs)[scorer_type]
+    scores = np.array(scores).reshape(len(gold_list), len(pred_list))
+    print(f"scores: {scores}")
+    min_items = min(len(gold_list), len(pred_list))
+    for _ in range(min_items):
+        best_match_index = np.unravel_index(np.argmax(scores, axis=None), scores.shape) # get argmax in scores dimensions (2D)
+        new_matched_pred[best_match_index[0]] = pred_list[best_match_index[1]] # add best match pred at right index (matching gold)
+        scores[best_match_index[best_match_index[0]], :] = 0 # remove scores for that match gold
+
+    print(f"new_matched_gold: {new_matched_gold}")
+    print(f"new_matched_pred: {new_matched_pred}")
 
     return matched_gold, matched_pred
 
@@ -515,6 +541,8 @@ def summary_statistics(golds, preds, score_types=['rouge', 'bleu', 'bert', 'gpt_
         stats_df[count_type] = stats_df['counts'].apply(lambda x: x[count_type])
     stats_df.drop(['counts'], axis=1, inplace=True)
     scorer = Scorer(score_types)
+
+    print(f"Initialized scorer with modes: {list(scorer.score_types)}.")
 
     stats_df['keys'] = stats_df['cleaned_flat_dicts'].apply(lambda x: list(x.keys()))
     stats_df['pairs'] = stats_df['cleaned_flat_dicts'].apply(lambda x: list(x.values()))
