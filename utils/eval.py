@@ -171,8 +171,8 @@ class Scorer():
                    pairs,
                    model_name='gpt-4-1106-preview',
                    chat=chat_gpt_4_turbo,
-                   max_tokens = 300000,
-                   one_call_batch_size = 20, 
+                   max_tokens = 300,
+                   one_call_batch_size = 5, 
                    temperature=0.0):
         ''' 
         For each pair of gold and pred strings, ask GPT-4 to pick which one is the best.
@@ -259,8 +259,8 @@ class Scorer():
                    model_name='gpt-4-1106-preview',
                    chat=chat_gpt_4_turbo,
                    temperature=0.0,
-                   max_tokens = 700,
-                   one_call_batch_size=10):
+                   max_tokens = 300,
+                   one_call_batch_size=5):
         ''' 
         Given a model’s answer and GPT-4' answer (silver label), 
         ask GPT-4 with CoT to compute the similarity between the two answers on a scale of 1 to 10. 
@@ -310,7 +310,7 @@ class Scorer():
                 answers = generate_answers(
                     messages_list = sub_batch['messages'].tolist(),
                     formatting=self.scorer_formatting,
-                    chat=chat_gpt_3,#chat_gpt_4_turbo,
+                    chat=chat,
                     temperature=temperature
                 ) # answer is list of list
                 explanations =  [None] * sub_batch.shape[0] if not self.cot else [answer[1] for answer in answers]
@@ -626,25 +626,35 @@ def clinical_note_evaluation(model_name, path, score_types='all'):
     df = df.sample(frac=1).reset_index(drop=True)
     df['model_name'] = model_name
 
+    pairs = pd.Series([{'gold': gold, 'pred': pred} for gold, pred in zip(df['gold'], df['pred'])])
+
     # Compute scores for each pair of gold and pred clinical notes
     scorer = Scorer(score_types)
-    scores_path = path.replace('.jsonl', '_scores.jsonl')
-    for i, row in tqdm(df.iterrows(), total=df.shape[0], desc="Evaluating pairs of clinical notes"):
-        scores = scorer.evaluate(row['gold'], row['pred'])
-        for score_type, score in scores.items():
-            df.loc[i, score_type] = score
-        if i % 10 == 0:
-            save_file(df, scores_path)
-    save_file(df, scores_path)
+
+    scores = scorer(pairs)
+
+    if score_types == 'all':
+        score_types = ALL_SCORE_TYPES
+
+    if score_types == 'rouge':
+        score_types = ROUGE_SUB_SCORES
+
+    else:   
+        if 'rouge' in score_types:
+            score_types.remove('rouge')
+            score_types.extend(ROUGE_SUB_SCORES)
+
+    for metric in score_types:
+        df[metric] = scores[metric]
 
     # Compute ELO ranking from GPT-4 scores
-    if 'gpt_rank' in score_types:
+    '''if 'gpt_rank' in score_types:
         rankings_path = path.replace('.jsonl', '_rankings.jsonl')
         rankings = elo_ranking(df)
         print(f'ELO rankings: {rankings}')
         with open(rankings_path, 'w') as f:
             json.dump(rankings, f)
-            print(f'Saved ELO rankings to {rankings_path}')
+            print(f'Saved ELO rankings to {rankings_path}')'''
     return df
 
 def elo_ranking(df):
