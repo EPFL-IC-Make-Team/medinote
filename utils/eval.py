@@ -33,6 +33,7 @@ BLEU_SCORER = load("bleu")
 NONE_MATCH  = "None_Match"
 NO_SUCH_KEY = "no_such_key"
 NONE_FIELD = "None"
+ALL_SCORE_TYPES = ['bleu', 'rouge', 'bert', 'gpt_rank', 'gpt_score']
 ROUGE_SUB_SCORES = ['rouge1', 'rouge2',	'rougeL', 'rougeLsum']
 COUNTS_TYPES = ['missing_keys_count', 'extra_keys_count', 'common_none_count',  'gold_none_count', 'pred_none_count', 'common', 'total']
 KEY_MISMATCH_TYPE = ['gold_none_keys', 'pred_none_keys', 'missing_keys']
@@ -48,7 +49,7 @@ class Scorer():
             - cot (bool): whether to use Chain-of-Thought or not for GPT-4 evaluation (default: True)
         '''
         self.cot = cot
-        self.score_types = ['bleu', 'rouge', 'bert', 'gpt_rank', 'gpt_score'] if score_types == 'all' else score_types
+        self.score_types = ALL_SCORE_TYPES if score_types == 'all' else score_types
         #print('Initialized scorer with modes: ', list(self.score_types))
 
     def __call__(self, pairs): 
@@ -59,15 +60,21 @@ class Scorer():
         Example usage: 
             pairs = [{'gold': 'x', 'pred': 'y'}]
             scorer = Scorer(['bleu', 'rouge', 'bert'])
-            scores = await scorer(pairs)
-            --> scores = [{'bleu': 0.5, 'rouge': 0.3, 'bert': 0.7}]
+            scores = scorer(pairs)
+            --> scores = dataframe(
+                {
+                'pairs':[{'gold': 'x', 'pred': 'y'}],
+                'bleu': [0.5], 
+                'rouge': [0.3], 
+                'bert': [0.7]
+                    })
         '''
         pairs_df = pd.DataFrame(pairs)
         if 'bleu' in self.score_types:
             pairs_df['bleu'] = self.BLEU_scorer(pairs)['bleu']
         if 'rouge' in self.score_types:
             rouges = self.ROUGE_scorer(pairs)
-            for metric in rouges.keys():
+            for metric in rouges.keys(): #different rouge scores
                 pairs_df[metric] = rouges[metric]
         if 'bert' in self.score_types:
             pairs_df['bert'] = self.BERT_scorer(pairs)['bert']
@@ -81,21 +88,22 @@ class Scorer():
     def BLEU_scorer(self, pairs):
         ''' BLEU score for summary evaluation (precision-oriented)'''
         bleu_scores = {'bleu': [BLEU_SCORER.compute(predictions=[pair['pred']],
-                                                    references=[pair['gold']])['bleu'] 
-                                                for pair in tqdm(pairs, total = len(pairs) ,desc="Computing BLEU scores")]}
+                    references=[pair['gold']])['bleu'] 
+                    for pair in tqdm(pairs, total = len(pairs) ,desc="Computing BLEU scores")]}
         return bleu_scores
     
     def ROUGE_scorer(self, pairs):
         ''' ROUGE score for summary evaluation (recall-oriented)'''
         rouges = [ROUGE_SCORER.compute(
-                predictions=[pair['pred']], references=[pair['gold']])
-                for pair in tqdm(pairs, total = len(pairs) ,desc="Computing ROUGE scores")]
+            predictions=[pair['pred']], references=[pair['gold']])
+            for pair in tqdm(pairs, total = len(pairs) ,desc="Computing ROUGE scores")]
         
         metrics = rouges[0].keys()
         scores = {metric: [rouge[metric] for rouge in rouges] for metric in metrics} 
         return scores
 
     def BERT_scorer(self, pairs):
+        '''BERT score for summary evaluation'''
         print("Computing BERT scores...")
         scores = {'bert': 
             BERT_SCORER.compute(
@@ -109,43 +117,60 @@ class Scorer():
     def ranker_formatting(self, answer):
         """
         Format the ranking answer from GPT-4
-        to get the winner and explanaion if cot as list of int/string
+        to get the winners and (explanations if cot) as list of strings
         """
         winner_pattern = r"'higher_quality_note': '([^']+)'"      
         winners = re.findall(winner_pattern, answer)
-        if len(winners) == 0:
-            raise ValueError(f"Invalid format {answer}.")
+
+        pair_numbers = [int(x) for x in re.findall(r"'pair_number': (\d+)", answer)]
+        max_pair_number = max(pair_numbers) if pair_numbers else None
+        if len(winners) != max_pair_number + 1:
+            raise ValueError(f"Invalid format:\n{answer}.")
+        winners = [x if x in ['NoteA', 'NoteB', 'tie'] else None for x in winners]
+        
         if self.cot:
             explanation_pattern = r"'explanation': '([^']+)'"
             explanations = re.findall(explanation_pattern, answer)
-            if len(explanations) != len(winners):
-                raise ValueError(f"Invalid format {answer}.")
+            if len(explanations) != max_pair_number + 1:
+                raise ValueError(f"Invalid format:\n{answer}.")
+            
             return winners, explanations
+        
         else:
             return winners
 
     def scorer_formatting(self, answer):
         """
         Format the scoring answer from GPT-4 
-        to get the similarity scores and explanaion if cot as list of int/string
+        to get the similarity scores (and explanaion if cot) as list of int/string
         """
         similarity_score_pattern = r"'similarity_score':\s*(\d+)"
         similarity_scores = re.findall(similarity_score_pattern, answer)
         int_answers = [int(score) for score in similarity_scores]
-        if len(int_answers) == 0:
+        
+        pair_numbers = [int(x) for x in re.findall(r"'pair_number': (\d+)", answer)]
+        max_pair_number = max(pair_numbers) if pair_numbers else None
+        
+        if len(int_answers) != max_pair_number + 1:
             raise ValueError(f"Invalid format {answer}.")
+        
+        int_answers = [x if x in range(1,11) else None for x in int_answers]
+        
         if self.cot:
             explanation_pattern = r"'explanation':'([^']+)'"
             explanations = re.findall(explanation_pattern, answer)
-            if len(explanations) != len(int_answers):
+            if len(explanations) != max_pair_number + 1:
                 raise ValueError(f"Invalid format {answer}.")
+            
             return int_answers, explanations
+        
         else:
             return int_answers
 
     def GPT_ranker(self, 
                    pairs,
-                   model_name='gpt-4-1106-preview', 
+                   model_name='gpt-4-1106-preview',
+                   chat=chat_gpt_4_turbo,
                    max_tokens = 300000,
                    one_call_batch_size = 20, 
                    temperature=0.0):
@@ -155,42 +180,46 @@ class Scorer():
 
         Arguments:
             - pairs (list of dict {'gold': str, 'pred': str}): list of gold and pred strings
-            - model_name (str): name of the GPT-4 model to use (default: gpt-4-1106-preview)
-            - batch_size (int): batch size for GPT-4 parallelization (default: 10)
+            - model_name (str): name of the GPT-4 model to use for tokan counts (default: gpt-4-1106-preview)
+            - chat (function): chat function to use for requests (default:  gpt-4-1106-preview)
+            - one_call_batch_size (int): numer of pairs to evaluate in one call to GPT-4 (default: 20) 
+                    (nothing related to parallelization, it's really one call)
             - temperature (float): temperature for GPT-4 sampling (default: 0.0)
         Returns: 
-            - dataframe with the winner and the explanation
+            - Pandas series of the winners (in the same order as the pairs)
 
-        TODO: Save the explanations and scores in a separate file.
+        TODO: Save the explanations and scores in a separate file as backup, possibility of resume
         '''
         print("GPT-4 ranking...")
+
+        #Builds the batch of pairs to evaluate as one single call
         dataset = pd.DataFrame({'pairs_list': [pairs[i: i+one_call_batch_size] for i in range(0, len(pairs), one_call_batch_size)]})
 
         dataset[['winner', 'explanation', 'switch', 'model_name']] = [None, None, None, model_name]
 
         messages = []
-        for i, pair_list in tqdm(dataset.iterrows(), total=dataset.shape[0], desc="Building score prompts"): 
+        for i, pair_list in tqdm(dataset.iterrows(), total=dataset.shape[0], desc="Building ranking prompts"): 
             golds = [pair['gold'] for pair in pair_list['pairs_list']]
             preds = [pair['pred'] for pair in pair_list['pairs_list']]
             switches = [np.random.choice([0, 1]) for _ in range(len(golds))]
+            #We randomly mix gold and pred to avoid bias
             optionsA = [gold if switch == 0 else pred for gold, pred, switch in zip(golds, preds, switches)]
             optionsB = [gold if switch == 1 else pred for gold, pred, switch in zip(golds, preds, switches)]
             
             sys_prompt = f"For each pair of clinical notes (pair i, NoteA, NoteB) you are given, compare them and rank which one is of higher quality. "
             if self.cot:
                 sys_prompt += "Explain in one sentence your reasoning in comparing the two clinical notes, then select your final answer.\n \
-                    Format your response as follows: a list of dictionnaries [{'pair_number': i, 'explanation': <your explanation>, 'higher_quality_note': <your answer>}]."
+                    Format your response as follows: a list of dictionnaries [{'pair_number': i, 'explanation': <your explanation>, 'higher_quality_note': <your answer>}].\n"
             else:
-                sys_prompt += "Directly respond with your final answers as follows: a list of dictionnaries [{'pair_number': i, 'higher_quality_note': <your answer>}]"
+                sys_prompt += "Directly respond with your final answers as follows: a list of dictionnaries [{'pair_number': i, 'higher_quality_note': <your answer>}\n"
             
-            sys_prompt += "<your answer should be 'NoteA' if NoteA has better quality, 'NoteB' if NoteB has better quality, or 'tie' if they have the same quality."
+            sys_prompt += "Your answer should be 'NoteA' if NoteA has better quality, 'NoteB' if NoteB has better quality, or 'tie' if they have the same quality."
             usr_prompt = '\n'.join([f"(pair {i}, {optionA}, {optionB})" for i, (optionA, optionB) in enumerate(zip(optionsA, optionsB))])
             
             messages.append(build_messages(sys_prompt, usr_prompt))
             dataset.at[i,'switch'] = switches
-        
-        print("Creating sub-batches...")
-        # Builds a partitions which have total number of tokens < max_tokens
+
+        # Builds batch of calls so that each call has a total number of tokens less than max_tokens
         sub_batches = partition(dataframe = pd.concat([pd.DataFrame({'messages': messages}),dataset['switch']], axis =1), max_token_per_partition=max_tokens,model = model_name)
 
         # Generate answers by batches
@@ -200,15 +229,25 @@ class Scorer():
                 answers = generate_answers(
                     messages_list = sub_batch['messages'].tolist(),
                     formatting= self.ranker_formatting,
-                    chat=chat_gpt_4_turbo,
+                    chat=chat,
                     temperature=temperature
                 ) # answer is list of list
-                explanations =  [None] * sub_batch.shape[0] if not self.cot else [answer[1] for answer in answers]
-                winners = [['tie' if (answer == 'tie') else
+
+                if self.cot:
+                    explanations = [answer[1] for answer in answers]
+                    winners = [['tie' if (answer == 'tie') else
                         'gold' if (answer == 'NoteA' and switch == 0) or (answer == 'NoteB' and switch == 1) else
                         'pred' 
-                        for answer,switch in zip(winner_list, switches)]
-                        for winner_list, switches in zip(answers, sub_batch['switch'].tolist())]
+                        for answer,switch in zip(answer_list[0], switches)]
+                        for answer_list, switches in zip(answers, sub_batch['switch'].tolist())]
+
+                else:
+                    explanations =  [None] * sub_batch.shape[0]
+                    winners = [['tie' if (answer == 'tie') else
+                            'gold' if (answer == 'NoteA' and switch == 0) or (answer == 'NoteB' and switch == 1) else
+                            'pred' 
+                            for answer,switch in zip(answer_list, switches)]
+                            for answer_list, switches in zip(answers, sub_batch['switch'].tolist())]
                 dataset.loc[sub_batch.index,'winner'] = pd.Series(winners, index = sub_batch.index)
                 dataset.loc[sub_batch.index,'explanation'] = pd.Series(explanations, index = sub_batch.index)
             except Exception as e:
@@ -218,6 +257,7 @@ class Scorer():
     def GPT_scorer(self, 
                    pairs,
                    model_name='gpt-4-1106-preview',
+                   chat=chat_gpt_4_turbo,
                    temperature=0.0,
                    max_tokens = 700,
                    one_call_batch_size=10):
@@ -229,11 +269,13 @@ class Scorer():
 
         Arguments:
             - pairs (list of dict {'gold': str, 'pred': str}): list of gold and pred strings
-            - model_name (str): name of the GPT-4 model to use (default: gpt-4-1106-preview)
+            - model_name (str): name of the GPT-4 model to use for tokan counts (default: gpt-4-1106-preview)
+            - chat (function): chat function to use for requests (default:  gpt-4-1106-preview)
+            - one_call_batch_size (int): numer of pairs to evaluate in one call to GPT-4 (default: 20) 
+                    (nothing related to parallelization, it's really one call)
             - temperature (float): temperature for GPT-4 sampling (default: 0.0)
-            - batch_size (int): batch size for GPT-4 parallelization (default: 10)
         Returns: 
-            - dataframe with the similarity score and the explanation
+            - pandas series of similarity scores (in the same order as the pairs given)
 
         TODO: Save the explanations and scores in a separate file.
         '''
@@ -249,10 +291,10 @@ class Scorer():
             switches = [np.random.choice([0, 1]) for _ in range(len(golds))]
             optionsA = [gold if switch == 0 else pred for gold, pred, switch in zip(golds, preds, switches)]
             optionsB = [gold if switch == 1 else pred for gold, pred, switch in zip(golds, preds, switches)]
-            sys_prompt = f"For each pair of clinical notes (pair i, NoteA, NoteB) you are given, compare them and rate how similar they are to each other on a scale of 1 to 10. "
+            sys_prompt = f"For each pair of notes (pair i, NoteA, NoteB) you are given, compare them and rate how similar they are to each other on a scale of 1 to 10. "
             
             if self.cot:
-                sys_prompt += "Explain in one sentence your reasoning in comparing the two clinical notes, then select your final answer.\n \
+                sys_prompt += "Explain in one sentence your reasoning in comparing the two notes, then select your final answer.\n \
                     Format your response as follows: a list of dictionnaries [{'pair_number': i, 'explanation': <your explanation>, 'similarity_score': <your answer>}]"
             else:
                 sys_prompt += "Directly respond with your final answers as follows: a list of dictionnaries [{'pair_number': i, 'similarity_score': <your answer>}]"
@@ -285,11 +327,17 @@ class Scorer():
 
 def match_list(gold_list, pred_list, scorer_type='bert'):
     '''
-    Given two lists of dictionaries, match corresponding dictionaries by score.
+    Given two lists of (sub)-dictionaries, match corresponding dictionaries by maximum score.
     Arguments: 
-        - gold_list (list of dict): list of gold dictionaries
-        - pred_list (list of dict): list of predicted dictionaries
-        - scorer_type (str): type of scorer to use for matching (default: 'bert') 
+        - gold_list (list of dict): list of gold (sub)-dictionaries
+        - pred_list (list of dict): list of predicted (sub)-dictionaries
+        - scorer_type (str): type of scorer to use for matching (default: 'bert')
+
+    Output:
+        - matched_gold (list of dict): same as gold_list,
+                        extended with empty dictionnaries if pred_list is longer
+        - matched_pred (list of dict): pred_list reordered to macth gold_list,
+                        extended with empty dictionnaries if gold_list is longer 
     '''
     scorer = Scorer([scorer_type])
 
@@ -349,7 +397,7 @@ def flatten_dict(gold, pred, parent_key=''):
                     flat.append((f"{parent_key}{gold_key}", (gold_value, pred[gold_key])))               
             if isinstance(gold_value, dict):
                 flat.extend(flatten_dict(gold_value, pred[gold_key], parent_key=f"{parent_key}{gold_key}/"))
-            if isinstance(gold_value, list):
+            if isinstance(gold_value, list): #We have to match most similar lists
                 matched_gold, matched_pred = match_list(
                     gold_list = gold_value, pred_list = pred[gold_key])
                 for i, gold_list_val in enumerate(matched_gold):
@@ -391,7 +439,14 @@ def get_counts_and_clean_dict(flattened_dict):
     Given a flattened dictionary, compute the number of missing keys, extra keys, 
     common keys with None value, common keys with None value in gold, common keys with None value in pred.
     also returns remaining common keys (with no nones) amd missing ones for further evaluation.
+    Outputs:
+        - counts (dict of str: int): dictionaries of counts mentionned above
+        - clean_flat_dict (dict of str: (str, str)): flattened dictionary of    
+                                    matched (gold, pred) values that had no None values
+        - key_mismatches (dict of str: list of str): dictionary of lists of mismatched keys
+                                    (either missing keys, or with unexpected None values)
     '''
+
     counts = {key: 0 for key in COUNTS_TYPES}
     counts['total']= len(flattened_dict)
     clean_flat_dict = {}
@@ -417,32 +472,44 @@ def get_counts_and_clean_dict(flattened_dict):
     counts['missing_keys_count'] = len(key_mismatches['missing_keys'])
     return counts, clean_flat_dict, key_mismatches
 
-def summary_statistics(golds, preds, score_types=['rouge', 'bleu', 'bert']):
+def summary_statistics(golds, preds, score_types=['rouge', 'bleu', 'bert', 'gpt_score']):
     '''
-    Given several gold,pred patient summaries, flatten and match keys, 
+    Given several (gold,pred) patient summaries pairs, flatten and match keys, 
     then compute matching scores & counts.
-    Retunrs a pandas dataframe with:
-        - a row for each gold,pred dictionary pair,
-        - a column scores containing a dictionary of scores for each key
+    Returns a pandas dataframe with:
+        - a row for each gold,pred dictionary pair
+        - a column for the (list of) keys which were matched and value were scored
+        - a column for each (list of) value pairs of the matched keys adn which were scored
+        - a column for each (list of) unmatcehd keys
+        - a column for each counts type that is computed
+        - a column for each (list of) scores type that is computed
+    
+    NOTE: raw output not meant to be used but function meant to be used in summary_evaluation
     '''
     if golds.shape[0] != preds.shape[0]:
         raise ValueError("Gold and pred lists must be of same length.")
     
+    if score_types == 'all' or 'gpt_rank' in score_types:
+        raise ValueError("GPT-4 ranking make no sense for summary evaluation. \
+                         Please choose between 'bleu', 'rouge', 'bert' and 'gpt_score'.")
+
     stats_df = pd.concat([golds, preds], axis=1)
+    #Flatten and match keys of each dict pair
     stats_df['flat_dicts'] = stats_df.apply(lambda row: flatten_dict(row['gold'], row['pred']), axis=1)
     stats_df.drop(['gold', 'pred'], axis=1, inplace=True)
 
+    #Compute counts and clean each flattened dict
     stats_df[['counts','cleaned_flat_dicts','key_mismatches']] = pd.DataFrame(
                         stats_df['flat_dicts'].apply(get_counts_and_clean_dict).tolist(),
                         columns=['counts', 'cleaned_flat_dicts', 'key_mismatches'])
     
     stats_df.drop(['flat_dicts'], axis=1, inplace=True)
 
+    #Unpack counts, key_mismatches and matched (key, (gold,pred)) pairs
     for key_mismatch in KEY_MISMATCH_TYPE:
         stats_df[key_mismatch] = stats_df['key_mismatches'].apply(lambda x: x[key_mismatch])
     
     stats_df.drop(['key_mismatches'], axis=1, inplace=True)
-
 
     for count_type in COUNTS_TYPES:
         stats_df[count_type] = stats_df['counts'].apply(lambda x: x[count_type])
@@ -453,52 +520,74 @@ def summary_statistics(golds, preds, score_types=['rouge', 'bleu', 'bert']):
     stats_df['pairs'] = stats_df['cleaned_flat_dicts'].apply(lambda x: list(x.values()))
     stats_df.drop(['cleaned_flat_dicts'], axis=1, inplace=True)
     
-
+    #Prepare df to pass to scorer (mainly flattening the list of list of keys and pairs)
     pairs_df = stats_df[['keys', 'pairs']].explode(['keys', 'pairs'])
     pairs_df['pairs'] = pairs_df['pairs'].apply(lambda x: {'gold': x[0], 'pred': x[1]})
+    
+    #Compute scores for each gold,pred pair
     scores = scorer(pairs_df['pairs'])
 
+    #Unpack scores
     for metric in scores.columns:
         pairs_df[metric] = scores[metric]
 
+    #Group scores by dictionaries as list of scores (mainly unlfattening the list of scores
+        #as a list of list of scores)
     grouped_scores = pairs_df.groupby(pairs_df.index).agg(lambda x: list(x))
 
+    #Unpack grouped scores
     for metric in grouped_scores.columns:
         stats_df[metric] = grouped_scores[metric]
+        
     return stats_df
 
-def summary_evaluation(path, score_types=['bleu', 'rouge', 'bert']): 
+def summary_evaluation(path, score_types=['bleu', 'rouge', 'bert', 'gpt_score']): 
     '''
     1 - Patient summary evaluation
     Run evaluation on a dataframe with 'gold' and 'pred' patient summaries. 
 
     Arguments: 
         - path (str): path to dataframe with 'gold' and 'pred' patient summaries
-        - score_types (str or list): list of scoring functions to be used. (Default: BLEU + ROUGE + BERT)
+        - score_types (str or list): list of scoring functions to be used.
+            (Default: BLEU + ROUGE + BERT + GPT-4 score). Cannot be 'gpt_rank'
+    
+    Returns two pandas dataframes:
+        - dataset (pd.DataFrame): origninal dataframe with evaluation results:
+            - a row for each gold,pred dictionary pair
+            - a column for each (mean) score computed accros keys who were matched
+            - a column for each count about key matching, nones etc.
+        - score_by_keys (pd.DataFrame): dataframe with evaluation results by key
+            - a row for each (gold) key
+            - a column for each (mean) score
+                    computed accros all patient summaries for this key
+            - a column for each prorpotion about key matching, nones etc.
+                    computed accros all patient summaries for this key 
+                    e.g. "proprtion of pred summaries where this key is mssing"
     '''
+
+    if score_types == 'all' or 'gpt_rank' in score_types:
+        raise ValueError("GPT-4 ranking make no sense for summary evaluation. \
+                         Please choose between 'bleu', 'rouge', 'bert' and 'gpt_score'.")
+
     dataset = load_file(path)
-    dataset = dataset.sample(frac=1).reset_index(drop=True)
-    scores_path = path.replace('.jsonl', '_scores.jsonl')
 
     #save_file(dataset, scores_path)
     stats = summary_statistics(dataset['gold'], dataset['pred'], score_types)
-
-    if score_types == 'all':
-        score_types = ['bleu', 'rouge', 'bert', 'gpt_rank', 'gpt_score']
 
     if 'rouge' in score_types:
         score_types.remove('rouge')
         score_types.extend(ROUGE_SUB_SCORES)
 
-    # Compute average matching scores accrosss all field for each metric for each patient summary
+    # Compute average matching scores accrosss all keys for each metric for each patient summary
     for metric in score_types:
         if metric != 'gpt_rank':
             dataset[f"mean_{metric}"] = stats[metric].apply(lambda x: np.mean(x))
+    
     for count_type in COUNTS_TYPES:
         dataset[count_type] = stats[count_type]
+    
     #Compute average matching scores accross all patient summaries for each metric for each field
-    #As well as average counts of missing, none_prd, none_gold    
-    score_types.remove('gpt_rank')
+    #As well as average counts of missing, none_pred, none_gold
     exploding1 = ['keys'] + score_types
     score_by_keys = stats[exploding1].explode(exploding1)
     score_by_keys = score_by_keys.groupby(['keys']).agg('mean')

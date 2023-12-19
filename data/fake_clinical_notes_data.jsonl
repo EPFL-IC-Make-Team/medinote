@@ -1,0 +1,10 @@
+{"note_id": "1", "gold": "The patient has a history of diabetes and hypertension.", "pred": "Patient history includes diabetes and high blood pressure."}
+{"note_id": "2", "gold": "Complains of fever and joint pain.", "pred": "Patient reports fever and discomfort in joints."}
+{"note_id": "3", "gold": "Exhibits symptoms of nausea and dizziness.", "pred": "Nausea and vertigo evident in the patient."}
+{"note_id": "4", "gold": "Diagnosed with pneumonia, prescribed antibiotics.", "pred": "Pneumonia diagnosis confirmed; antibiotics prescribed."}
+{"note_id": "5", "gold": "Suffers from anxiety and panic attacks.", "pred": "Anxiety and episodes of panic are recurrent."}
+{"note_id": "6", "gold": "Has a history of asthma and allergies.", "pred": "Asthma and allergic reactions are part of patient history."}
+{"note_id": "7", "gold": "Complains of abdominal pain and bloating.", "pred": "Reports discomfort in the abdomen and feeling bloated."}
+{"note_id": "8", "gold": "Patient underwent knee surgery last year.", "pred": "Knee surgery was performed on the patient in the previous year."}
+{"note_id": "9", "gold": "Diagnosed with depression, prescribed SSRIs.", "pred": "Depression diagnosis made; SSRIs prescribed accordingly."}
+{"note_id": "10", "gold": "Reports headaches and occasional blurred vision.", "pred": "Frequent headaches and sporadic blurring of vision noted by the patient."}

@@ -67,7 +67,7 @@ async def ask_chat(
         try:
             formatted_answer = formatting(answer) 
         except Exception as f:
-            raise ValueError("Wasn't answered in the right format")
+            raise ValueError(f"Wasn't answered in the right format {answer}")
         return formatted_answer
     except ValueError as e:
         print(f"\nException occurred: {e}")
@@ -255,7 +255,6 @@ def new_sub_batch(row, msg_len):
     return {"sub_batch": pd.DataFrame([row], index=[row.name]), "Total_nb_token": msg_len}
 
 def partition(dataframe, max_token_per_partition, model):
-    print(dataframe.index)
     ''' Build most optimal partitions given max number of tokens, model and messages. '''
     sub_batches = []
     for _, row in tqdm(dataframe.iterrows(), total=dataframe.shape[0], desc="Building sub-batches"):
