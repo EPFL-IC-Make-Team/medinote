@@ -44,6 +44,7 @@ def save_file(df, path):
     '''
     Given a dataframe, save it to a .csv or .json or .jsonl file.
     '''
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     if '.csv' in path:
         df.to_csv(path, index=False)
     elif '.jsonl' in path:

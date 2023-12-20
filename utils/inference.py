@@ -10,7 +10,7 @@ from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers import pipeline
 
-from data import *
+from data import DATA_DIR, load_file, save_file
 
 PARAMETERS = {
     'max_new_tokens': 1000,
@@ -67,8 +67,6 @@ def generate(model_name,
     if output_path is None:
         output_path = data_path.replace('.jsonl', f'-{model_name}.jsonl')
 
-    os.makedirs(os.path.join(DATA_DIR, 'inference'), exist_ok=True)
-    
     for i, row in tqdm(dataset.iterrows(), total=len(dataset), 
                        desc=f"Generating answers from {model_name}"):
         try: 
