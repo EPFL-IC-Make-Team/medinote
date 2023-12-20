@@ -10,7 +10,7 @@ from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers import pipeline
 
-from data import DATA_DIR, load_file, save_file
+from data import *
 
 PARAMETERS = {
     'max_new_tokens': 1000,
