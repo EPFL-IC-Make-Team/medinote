@@ -15,14 +15,8 @@ from utils.chat import chat_gpt_4_turbo
 from utils.generate import extract
 
 DATA_DIR = 'data'
-SUMMARIES_DIR = os.path.join(DATA_DIR, 'summaries')
-DIRECT_DIR = os.path.join(DATA_DIR, 'direct')
-SUMMARIZER_DIR = os.path.join(DATA_DIR, 'summarizer')
-GENERATOR_DIR = os.path.join(DATA_DIR, 'generator')
-
-for dir in [DATA_DIR, SUMMARIES_DIR, DIRECT_DIR, SUMMARIZER_DIR, GENERATOR_DIR]:
-    print(f'Creating directory {dir}')
-    os.makedirs(dir, exist_ok=True)
+for folder in ['summaries', 'summarizer', 'generator', 'direct']:
+    os.makedirs(os.path.join(DATA_DIR, folder), exist_ok=True)
 
 def count_tokens(text: str):
     '''
@@ -66,16 +60,20 @@ def split(data_path, test_ratio=0.1, random_state=42):
     '''
     Split a dataset into train and test sets. 
     '''
-    data = pd.read_json(data_path, orient='records', lines=True)
-    train, test = train_test_split(data, test_size=test_ratio, random_state=random_state)
     train_path = data_path.replace('.jsonl', '_train.jsonl')
     test_path = data_path.replace('.jsonl', '_test.jsonl')
-    train.to_json(train_path, orient='records', lines=True)
-    test.to_json(test_path, orient='records', lines=True)
-    print(f'Saved train and test sets to {train_path} and {test_path}.')
+    if not os.path.exists(train_path) or not os.path.exists(test_path):
+        data = pd.read_json(data_path, orient='records', lines=True)
+        train, test = train_test_split(data, test_size=test_ratio, random_state=random_state)
+        train.to_json(train_path, orient='records', lines=True)
+        test.to_json(test_path, orient='records', lines=True)
+        print(f'Saved train and test sets to {train_path} and {test_path}.')
+    else:
+        train = pd.read_json(train_path, orient='records', lines=True)
+        test = pd.read_json(test_path, orient='records', lines=True)
     return train, test
 
-def prepare_data(data_path, save_path, prompt_path=None, prompt_key='conversation', gold_key='full_note'):
+def prepare_dataset(data_path, save_path, prompt_path=None, prompt_key='conversation', gold_key='full_note'):
     '''
     Prepares the data for generation by adding the prompt and gold text to the data.
     '''
@@ -111,39 +109,36 @@ def prepare(data_dir):
     - Prepare direct dataset
     - Split data into train and test sets
     '''
-
-    notechat_path = os.path.join(data_dir, 'NoteChat.jsonl')
-    if not os.path.exists(notechat_path):
-        print(f'Loading NoteChat data from HuggingFace to {notechat_path}...')
-        notechat = load_dataset("akemiH/NoteChat")['train'].to_pandas()
-        notechat.to_json(notechat_path, orient='records', lines=True)
-    else:
-        print(f'Loading NoteChat data from {notechat_path}...')
-        notechat = pd.read_json(notechat_path, orient='records', lines=True)
-    notechat.rename(columns={'data': 'note'}, inplace=True)
-
-    if 'idx' not in notechat.columns:   
-        print(f'Sorting NoteChat data by decreasing length...')
-        notechat['length'] = notechat['note'].apply(lambda x: count_tokens(x))
-        notechat = notechat.sort_values(by=['length'], ascending=False)
-        notechat = notechat.drop(columns=['length'])
-        notechat['idx'] = notechat.index
-        data_path = os.path.join(data_dir, 'NoteChat_sorted.jsonl')
-        notechat.to_json(data_path, orient='records', lines=True)
-
-    instruction_path = 'generation/instructions/generate.txt'
+    print(f'Data preparation initiated.\n')
     summaries_path = os.path.join(data_dir, 'summaries', 'summaries_30K.jsonl')
-    template_path = 'generation/templates/template_definitions.json'
-    instruction_path = 'generation/instructions/instructions.txt'
     if os.path.exists(summaries_path):
         print(f'Loading summaries from {summaries_path}.')
     else:
+        notechat_path = os.path.join(data_dir, 'NoteChat.jsonl')
+        if not os.path.exists(notechat_path):
+            print(f'Loading NoteChat data from HuggingFace to {notechat_path}...')
+            notechat = load_dataset("akemiH/NoteChat")['train'].to_pandas()
+            notechat.to_json(notechat_path, orient='records', lines=True)
+        else:
+            print(f'Loading NoteChat data from {notechat_path}...')
+            notechat = pd.read_json(notechat_path, orient='records', lines=True)
+        notechat.rename(columns={'data': 'note'}, inplace=True)
+
+        if 'idx' not in notechat.columns:   
+            print(f'Sorting NoteChat data by decreasing length...')
+            notechat['length'] = notechat['note'].apply(lambda x: count_tokens(x))
+            notechat = notechat.sort_values(by=['length'], ascending=False)
+            notechat = notechat.drop(columns=['length'])
+            notechat['idx'] = notechat.index
+            data_path = os.path.join(data_dir, 'NoteChat_sorted.jsonl')
+            notechat.to_json(data_path, orient='records', lines=True)
+
         print(f'Generating summaries...')
         extract(
             model = 'gpt-4-1106-preview',
             chat = chat_gpt_4_turbo,
-            template_path = template_path,
-            instruction_path = instruction_path,
+            template_path = 'generation/templates/template_definitions.json',
+            instruction_path = 'generation/instructions/generate.txt',
             data_path = data_path,
             save_path = summaries_path,
             use_notes = True, 
@@ -159,28 +154,31 @@ def prepare(data_dir):
         summaries.to_json(summaries_path, orient='records', lines=True)
 
     print(f'Preparing summarizer dataset...')
-    summarizer_path = os.path.join(SUMMARIZER_DIR, 'summarizer_30K.jsonl')
-    summarizer = prepare_data(data_path=summaries_path, 
-                            save_path=summarizer_path,
-                            prompt_path='generation/instructions/summarize.txt',
-                            prompt_key='conversation',
-                            gold_key='summary')
+    summarizer_path = os.path.join(data_dir, 'summarizer', 'summarizer_30K.jsonl')
+    summarizer = prepare_dataset(
+        data_path=summaries_path, 
+        save_path=summarizer_path,
+        prompt_path='generation/instructions/summarize.txt',
+        prompt_key='conversation',
+        gold_key='summary')
     
     print(f'Preparing generator dataset...')
-    generator_path = os.path.join(GENERATOR_DIR, 'generator_30K.jsonl')
-    generator = prepare_data(data_path=summaries_path, 
-                            save_path=generator_path,
-                            prompt_path='generation/instructions/generate.txt',
-                            prompt_key='summary',
-                            gold_key='data')
+    generator_path = os.path.join(data_dir, 'generator', 'generator_30K.jsonl')
+    generator = prepare_dataset(
+        data_path=summaries_path, 
+        save_path=generator_path,
+        prompt_path='generation/instructions/generate.txt',
+        prompt_key='summary',
+        gold_key='data')
 
     print(f'Preparing direct dataset...')
-    direct_path = os.path.join(DIRECT_DIR, 'direct_30K.jsonl')
-    direct = prepare_data(data_path=summaries_path, 
-                        save_path=direct_path,
-                        prompt_path='generation/instructions/direct.txt',
-                        prompt_key='conversation',
-                        gold_key='data')
+    direct_path = os.path.join(data_dir, 'direct', 'direct_30K.jsonl')
+    direct = prepare_dataset(
+        data_path=summaries_path, 
+        save_path=direct_path,
+        prompt_path='generation/instructions/direct.txt',
+        prompt_key='conversation',
+        gold_key='data')
     
     print(f'Splitting data into train and test sets...')
     summarizer_train, summarizer_test = split(summarizer_path, test_ratio=0.1)
@@ -191,17 +189,14 @@ def prepare(data_dir):
     summarizer_train_idx = set(summarizer_train['idx'])
     generator_test_idx = set(generator_test['idx'])
     direct_test_idx = set(direct_test['idx'])
-    intersection = summarizer_train_idx.intersection(generator_test_idx)
-    print(f'Intersection: {len(intersection)}')
-    intersection = summarizer_train_idx.intersection(direct_test_idx)
-    print(f'Intersection: {len(intersection)}')
-    print('Done.')
+    assert len(summarizer_train_idx.intersection(generator_test_idx)) == 0
+    assert len(summarizer_train_idx.intersection(direct_test_idx)) == 0
+    print('\nData preparation completed.')
 
 
 if __name__ == '__main__': 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_dir', type=str, default=None, 
-                        help='Path to data directory')
+    parser.add_argument('--data_dir', type=str, default=None, help='Path to data directory')
     args = parser.parse_args()
 
     data_dir = DATA_DIR if args.data_dir is None else args.data_dir

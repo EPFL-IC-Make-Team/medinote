@@ -33,14 +33,13 @@ NO_SUCH_KEY = "no_such_key"
 NONE_FIELD = "None"
 ALL_SCORE_TYPES = ['bleu', 'rouge', 'bert', 'gpt_rank', 'gpt_score']
 ROUGE_SUB_SCORES = ['rouge1', 'rouge2',	'rougeL', 'rougeLsum']
-COUNTS_TYPES = ['missing_keys_count', 'extra_keys_count', 'common_none_count',  'gold_none_count', 'pred_none_count', 'common', 'total']
+COUNTS_TYPES = ['missing_keys_count', 'extra_keys_count', 'common_none_count',  
+                'gold_none_count', 'pred_none_count', 'common', 'total']
 KEY_MISMATCH_TYPE = ['gold_none_keys', 'pred_none_keys', 'missing_keys']
 
 
 EVAL_DIR = '../evaluation'
-if not os.path.exists(EVAL_DIR):
-    print(f"Creating evaluation directory at {EVAL_DIR}")
-    os.mkdir(EVAL_DIR)
+os.makedirs(EVAL_DIR, exist_ok=True)
 
 # ----------------------- 1 - Patient Summary evaluation ----------------------- #
     
@@ -334,24 +333,27 @@ def summary_evaluation(path, score_types=['bleu', 'rouge', 'bert', 'gpt_score'])
     for count_type in COUNTS_TYPES:
         dataset[count_type] = stats[count_type]
     
-    #Compute average matching scores accross all patient summaries for each metric for each field
-    #As well as average counts of missing, none_pred, none_gold
+    # Compute average matching scores accross all patient summaries for each metric for each field
+    # As well as average counts of missing, none_pred, none_gold
     exploding1 = ['keys'] + score_types
     score_by_keys = stats[exploding1].explode(exploding1)
     score_by_keys = score_by_keys.groupby(['keys']).agg('mean')
-
-    score_by_keys = score_by_keys.merge(stats['gold_none_keys'].explode('gold_none_keys').value_counts().rename('gold_none_prop')/dataset.shape[0],
-                                        how='left',
-                                        left_on='keys', 
-                                        right_index=True).fillna(0)
-    score_by_keys = score_by_keys.merge(stats['pred_none_keys'].explode('pred_none_keys').value_counts().rename('pred_none_prop')/dataset.shape[0],
-                                        how='left',
-                                        left_on='keys',
-                                        right_index=True).fillna(0)
-    score_by_keys = score_by_keys.merge(stats['missing_keys'].explode('missing_keys').value_counts().rename('missing_keys_prop')/dataset.shape[0],
-                                        how='left',
-                                        left_on='keys',
-                                        right_index=True).fillna(0)
+    N = dataset.shape[0]
+    score_by_keys = score_by_keys.merge(
+        stats['gold_none_keys'].explode('gold_none_keys').value_counts().rename('gold_none_prop')/N,
+        how='left',
+        left_on='keys', 
+        right_index=True).fillna(0)
+    score_by_keys = score_by_keys.merge(
+        stats['pred_none_keys'].explode('pred_none_keys').value_counts().rename('pred_none_prop')/N,
+        how='left',
+        left_on='keys',
+        right_index=True).fillna(0)
+    score_by_keys = score_by_keys.merge(
+        stats['missing_keys'].explode('missing_keys').value_counts().rename('missing_keys_prop')/N,
+        how='left',
+        left_on='keys',
+        right_index=True).fillna(0)
     
     return dataset, score_by_keys
 
@@ -383,10 +385,8 @@ def clinical_note_evaluation(model_name, path, score_types='all'):
 
     if score_types == 'all':
         score_types = ALL_SCORE_TYPES
-
     if score_types == 'rouge':
         score_types = ROUGE_SUB_SCORES
-
     else:   
         if 'rouge' in score_types:
             score_types.remove('rouge')
