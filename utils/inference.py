@@ -17,11 +17,10 @@ PARAMETERS = {
     'do_sample': True,
     'top_k': 10,
     'num_return_sequences': 2,
-    'return_full_text': False,
-    'device_map': 'auto'
+    'return_full_text': False
 }
 
-# ----------------------- Inference utils ----------------------- #
+# ----------------------- Running inference ----------------------- #
 
 def generate(model_name, 
              model_path, 
