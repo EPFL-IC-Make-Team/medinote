@@ -17,7 +17,8 @@ PARAMETERS = {
     'do_sample': True,
     'top_k': 10,
     'num_return_sequences': 2,
-    'return_full_text': False
+    'return_full_text': False,
+    'device_map': 'auto'
 }
 
 # ----------------------- Inference utils ----------------------- #
@@ -56,11 +57,14 @@ def generate(model_name,
     print(f"Loading data from {data_path}...")
     dataset = load_file(data_path)
     dataset['model_name'] = model_name
+    dataset['pred'] = ''
 
     try: 
         print(f"Initalizing pipeline...")
         pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, 
-                        eos_token_id=tokenizer.eos_token_id, **PARAMETERS)
+                        eos_token_id=tokenizer.eos_token_id, 
+                        pad_token_id=tokenizer.eos_token_id,
+                        **PARAMETERS)
     except Exception as e:
         raise ValueError(f"Error when initializing pipeline:\n{e}")
     
@@ -73,7 +77,8 @@ def generate(model_name,
             answer = pipe(row['prompt'])['generated_text']
             dataset.loc[i, 'pred'] = answer
         except Exception as e:
-            print(f"Error in generating answer for {row['prompt']}: {e}")
+            #print(f"Error in generating answer for {row['prompt']}: {e}")
+            dataset.loc[i, 'pred'] = ''
         if i % 10 == 0: 
             save_file(dataset, output_path)
     save_file(dataset, output_path)
