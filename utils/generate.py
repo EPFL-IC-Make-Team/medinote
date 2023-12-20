@@ -10,8 +10,8 @@ import argparse
 import shutil
 import pandas as pd
 
-from utils.chat import *
-from utils.inference import load_file, save_file
+from chat import generate_answers, build_messages
+from inference import load_file
 
 def make_prompts(instruction, note=None, dialogue=None, template=None):
     '''

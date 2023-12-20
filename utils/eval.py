@@ -14,9 +14,9 @@ between the two answers on a scale of 1 to 10. The higher the number the closer 
 
 '''
 
-from utils.chat import *
-from utils.inference import *
-from utils.scorer import *
+from chat import *
+from inference import *
+from scorer import *
 
 import numpy as np
 import argparse

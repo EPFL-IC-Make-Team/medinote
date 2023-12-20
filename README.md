@@ -67,6 +67,8 @@ python utils/inference.py \
     --model_path /path/to/model/hf_checkpoint/ \
     --data_path /path/to/data.jsonl \
     --output_path data/summaries.jsonl
+
+python3 utils/inference.py --model_name meditron-7b-summarizer --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-7b-summarizer/hf_checkpoint/ --data_path /pure-mlo-scratch/make_project/data/raw/summarizer_test.jsonl --output_path /pure-mlo-scratch/make_project/data/inference/meditron-7b-summarizer.jsonl
 ```
 
 Evaluating patient summaries is done as follows:
