@@ -39,6 +39,7 @@ def generate(model_name,
         - data_path: Path to the data file with dialog or patient summaries. 
         - output_path: Path to the output file with generated notes
     '''
+
     if not os.path.exists(model_path):
         raise FileNotFoundError(f'Model not found at {model_path}.')
     
@@ -66,6 +67,8 @@ def generate(model_name,
     
     if output_path is None:
         output_path = data_path.replace('.jsonl', f'-{model_name}.jsonl')
+
+    os.makedirs(os.path.join(DATA_DIR, 'inference'), exist_ok=True)
     
     for i, row in tqdm(dataset.iterrows(), total=len(dataset), 
                        desc=f"Generating answers from {model_name}"):
