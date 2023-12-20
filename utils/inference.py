@@ -89,11 +89,19 @@ def generate(model_name,
         'eos_token_id': tokenizer.eos_token_id,
         'return_full_text': False
     }
-    pipe = pipeline("text-generation", model=model, tokenizer= tokenizer, **parameters)
+
+    try: 
+        pipe = pipeline("text-generation", model=model, tokenizer= tokenizer, **parameters)
+    except Exception as e:
+        raise ValueError(f"Error when loading model for inference:\n{e}")
+    
     for i, row in tqdm(dataset.iterrows(), total=len(dataset), 
                        desc=f"Generating answers from {model_name}"):
-        answer = pipe(row['prompt'])['generated_text']
-        dataset.loc[i, 'pred'] = answer
+        try: 
+            answer = pipe(row['prompt'])['generated_text']
+            dataset.loc[i, 'pred'] = answer
+        except Exception as e:
+            print(f"Error in generating answer for {row['prompt']}: {e}")
         if i % 10 == 0: 
             save_file(dataset, output_path)
     save_file(dataset, output_path)
