@@ -50,3 +50,36 @@ We fine-tune Meditron on the (`patient summary`, `clinical note`) pairs extracte
 
 **Few-shot prompting**: During generation, we may use a few samples of the clinician's own notes to condition the model to the clinician's writing style.
 
+
+### **Running our code**
+
+First prepare the NoteChat data and generate triplets using:
+
+```bash
+python utils/data.py
+```
+
+Running inference is done as follows:
+
+```bash
+python utils/inference.py \
+    --model /path/to/model \
+```
+
+Evaluating patient summaries is done as follows:
+
+```bash
+python utils/eval.py \
+    --mode summary \
+    --path data/generated/summaries.jsonl \
+    --score_types bleu, rouge, bert
+```
+
+Evaluating clinical notes is done as follows:
+
+```bash
+python utils/eval.py \
+    --mode clinical_note \
+    --path data/generated/notes.jsonl \
+    --score_types all
+```
