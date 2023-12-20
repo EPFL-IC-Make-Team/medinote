@@ -63,7 +63,10 @@ Running inference is done as follows:
 
 ```bash
 python utils/inference.py \
-    --model /path/to/model \
+    --model_name meditron-7b-summarizer \
+    --model_path /path/to/model/hf_checkpoint/ \
+    --data_path /path/to/data.jsonl \
+    --output_path data/summaries.jsonl
 ```
 
 Evaluating patient summaries is done as follows:

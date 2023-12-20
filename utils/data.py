@@ -18,6 +18,43 @@ DATA_DIR = 'data'
 for folder in ['summaries', 'summarizer', 'generator', 'direct']:
     os.makedirs(os.path.join(DATA_DIR, folder), exist_ok=True)
 
+# ----------------------- Generic utils ----------------------- #
+
+def load_file(path): 
+    '''
+    Given a .csv or .json or .jsonl or .txt file,
+    load it into a dataframe or string.
+    '''
+    if not os.path.exists(path):
+        raise ValueError(f"Path {path} does not exist.")
+    if '.csv' in path:
+        data = pd.read_csv(path)
+    elif '.jsonl' in path:
+        data = pd.read_json(path, lines=True)
+    elif '.json' in path:
+        data = pd.read_json(path)
+    elif '.txt' in path:
+        with open(path, 'r') as f:
+            data = f.read()
+    else: 
+        raise ValueError(f"Provided path {path} is not a valid file.")
+    return data
+
+def save_file(df, path):
+    '''
+    Given a dataframe, save it to a .csv or .json or .jsonl file.
+    '''
+    if '.csv' in path:
+        df.to_csv(path, index=False)
+    elif '.jsonl' in path:
+        df.to_json(path, orient='records', lines=True)
+    elif '.json' in path:
+        df.to_json(path, orient='records')
+    else: 
+        raise ValueError(f"Provided path {path} is not a .csv, .json or .jsonl file.")
+    return df
+
+
 def count_tokens(text: str):
     '''
     Counts the number of tokens in a string.
@@ -55,6 +92,8 @@ def formatting(summary):
     summary = re.sub(r'\n\s+}', '\n]', summary)
     summary = re.sub(r'\n\s+]', '\n]', summary)
     return summary
+
+# ----------------------- Data preparation ----------------------- #
 
 def split(data_path, test_ratio=0.1, random_state=42): 
     '''

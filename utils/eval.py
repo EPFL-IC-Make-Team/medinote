@@ -238,19 +238,19 @@ def summary_statistics(golds, preds, score_types=['rouge', 'bleu', 'bert', 'gpt_
         raise ValueError("GPT-4 ranking make no sense for summary evaluation. \
                          Please choose between 'bleu', 'rouge', 'bert' and 'gpt_score'.")
 
+    # Flatten and match keys of each dict pair
     stats_df = pd.concat([golds, preds], axis=1)
-    #Flatten and match keys of each dict pair
     stats_df['flat_dicts'] = stats_df.apply(lambda row: flatten_dict(row['gold'], row['pred']), axis=1)
     stats_df.drop(['gold', 'pred'], axis=1, inplace=True)
 
-    #Compute counts and clean each flattened dict
+    # Compute counts and clean each flattened dict
     stats_df[['counts','cleaned_flat_dicts','key_mismatches']] = pd.DataFrame(
                         stats_df['flat_dicts'].apply(get_counts_and_clean_dict).tolist(),
                         columns=['counts', 'cleaned_flat_dicts', 'key_mismatches'])
     
     stats_df.drop(['flat_dicts'], axis=1, inplace=True)
 
-    #Unpack counts, key_mismatches and matched (key, (gold,pred)) pairs
+    # Unpack counts, key_mismatches and matched (key, (gold,pred)) pairs
     for key_mismatch in KEY_MISMATCH_TYPE:
         stats_df[key_mismatch] = stats_df['key_mismatches'].apply(lambda x: x[key_mismatch])
     
@@ -360,7 +360,7 @@ def summary_evaluation(path, score_types=['bleu', 'rouge', 'bert', 'gpt_score'])
 # ----------------------- 2 - Clinical note evaluation ----------------------- #
     
     
-def clinical_note_evaluation(model_name, path, score_types='all'): 
+def note_evaluation(model_name, path, score_types='all'): 
     '''
     2 - Clinical note evaluation
     Given 2 models’ answers (randomly mixed), ask GPT-4 to pick which one is the best and compute an ELO score. 
@@ -380,12 +380,11 @@ def clinical_note_evaluation(model_name, path, score_types='all'):
 
     # Compute scores for each pair of gold and pred clinical notes
     scorer = Scorer(score_types)
-
     scores = scorer(pairs)
 
     if score_types == 'all':
         score_types = ALL_SCORE_TYPES
-    if score_types == 'rouge':
+    elif score_types == 'rouge':
         score_types = ROUGE_SUB_SCORES
     else:   
         if 'rouge' in score_types:
@@ -427,7 +426,7 @@ def elo_ranking(df):
     score_dict = {model: [] for model in model_names}
     for i, row in tqdm(df.iterrows(), total=df.shape[0], desc="Computing ELO rankings"):
         model = row['model_name']
-        rank_score = row['gpt_4_rank']
+        rank_score = row['gpt_rank']
         score_dict[model].append(rank_score)
         new_ratings = elo.get_new_ratings(elo_history[model], [rank_score])
         elo_history[model] = np.append(elo_history[model], new_ratings[0])
@@ -453,7 +452,7 @@ if __name__ == "__main__":
     parser.add_argument('--mode', 
                         type=str, 
                         default='summary', 
-                        help='summary or clinical_note')
+                        help='summary or note')
     parser.add_argument('--path', 
                         type=str, 
                         default='data/evaluation/summary_evaluation.jsonl', 
@@ -461,7 +460,7 @@ if __name__ == "__main__":
     parser.add_argument('--score_types', 
                         type=str,
                         default='all', 
-                        help='List of scoring functions to be used (choices: bleu, rouge, bert, gpt_4_rank, gpt_4_sim). \
+                        help='List of scoring functions to be used (choices: bleu, rouge, bert, gpt_rank, gpt_score). \
                             \nDefault: all (all scoring functions). Format example: "bleu, rouge, bert"')
     args = parser.parse_args()
     score_types = args.score_types.split(', ')
@@ -471,9 +470,9 @@ if __name__ == "__main__":
     if args.mode == 'summary':
         summary_evaluation(args.path)
 
-    elif args.mode == 'clinical_note':
-        clinical_note_evaluation(args.path, score_types)
+    elif args.mode == 'note':
+        note_evaluation(args.path, score_types)
 
     else:
-        raise ValueError(f"Mode {args.mode} is not valid. Please choose between 'summary' and 'clinical_note'.")
+        raise ValueError(f"Mode {args.mode} is not valid. Please choose between 'summary' and 'note'.")
     
