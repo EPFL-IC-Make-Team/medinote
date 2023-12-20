@@ -87,7 +87,8 @@ def generate(model_name,
         'top_k': 10,
         'num_return_sequences': 2,
         'eos_token_id': tokenizer.eos_token_id,
-        'return_full_text': False
+        'return_full_text': False,
+        'device': torch.device('cuda')
     }
 
     try: 

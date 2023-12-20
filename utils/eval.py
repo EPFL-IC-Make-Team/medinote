@@ -36,6 +36,12 @@ ROUGE_SUB_SCORES = ['rouge1', 'rouge2',	'rougeL', 'rougeLsum']
 COUNTS_TYPES = ['missing_keys_count', 'extra_keys_count', 'common_none_count',  'gold_none_count', 'pred_none_count', 'common', 'total']
 KEY_MISMATCH_TYPE = ['gold_none_keys', 'pred_none_keys', 'missing_keys']
 
+
+EVAL_DIR = '../evaluation'
+if not os.path.exists(EVAL_DIR):
+    print(f"Creating evaluation directory at {EVAL_DIR}")
+    os.mkdir(EVAL_DIR)
+
 # ----------------------- 1 - Patient Summary evaluation ----------------------- #
     
 
@@ -68,7 +74,6 @@ def match_list(gold_list, pred_list, scorer_type='bert'):
 
     # Iterate through each element in gold_list
     for gold_item in gold_list:
-        max_score = None
         best_match_index = -1
         print(f"gold_item: {gold_item}")
 
