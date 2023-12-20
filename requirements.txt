@@ -1,8 +1,0 @@
-openai
-asyncio
-nest_asyncio
-tiktoken
-scikit-learn
-pandas
-datasets
-matplotlib

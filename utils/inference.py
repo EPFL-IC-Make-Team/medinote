@@ -17,8 +17,7 @@ PARAMETERS = {
     'do_sample': True,
     'top_k': 10,
     'num_return_sequences': 2,
-    'return_full_text': False,
-    'device': torch.device('cuda')
+    'return_full_text': False
 }
 
 # ----------------------- Inference utils ----------------------- #
@@ -103,4 +102,4 @@ if __name__ == "__main__":
                         help='Path to the output file with generated notes. If None, saved to directory of data_path.')
     args = parser.parse_args()
 
-    generate(args.model_name, args.model_path, args.prompt_path, args.data_path, args.output_path)
+    generate(args.model_name, args.model_path, args.data_path, args.output_path)
