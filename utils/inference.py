@@ -6,11 +6,13 @@ import torch
 import os
 import argparse
 import pandas as pd
+import json as json
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers import pipeline
 
 from data import *
+from generate import *
 
 
 PARAMETERS = {
@@ -21,15 +23,65 @@ PARAMETERS = {
     'return_full_text': False
 }
 
-# ----------------------- Running inference ----------------------- #
+def complete_json(text): 
+    ''' Format a (potentially partial) JSON string to be valid. '''
+    json_string = text
+    while True:
+        if not json_string:
+            raise ValueError("Couldn't fix JSON")
+        try:
+            data = json.loads(json_string + "]")
+        except json.decoder.JSONDecodeError:
+            json_string = json_string[:-1]
+            continue
+        break
+    return data
 
-def generate(model_name, 
-             model_path, 
-             data_path,
-             output_path=None, 
-             num_samples=None):
+
+def check_summary(text, template_path): 
     '''
-    Loads a model and generates summaries for all the files in the path.
+    Temporary fix for limited context length. 
+    Loads the JSON patient summary template from the path. 
+    Given the (potentially partial) model output, 
+    check whether all fields are filled. 
+    Otherwise, outputs the features that are missing. 
+    '''
+    # Load JSON string
+    try: 
+        data = complete_json('{\n' + text)
+    except ValueError as e:
+        return False, None
+
+    # Load JSON template
+    if not os.path.exists(template_path):
+        raise FileNotFoundError(f'Template not found at {template_path}.')
+    with open(template_path) as f:
+        template = json.load(f)
+    
+    # Find all missing features from the template
+    missing = {}
+    for key in template.keys():
+        if key not in data.keys():
+            missing[key] = template[key]
+
+    if len(missing) == 0: 
+        return True, {}
+    else:
+        return False, missing
+
+
+# ----------------------- Running inference ----------------------- #
+    
+
+def generate(
+        model_name,
+        model_path, 
+        data_path,
+        output_path=None, 
+        num_samples=None, 
+        mode='summarizer'):
+    '''
+    Loads a model and generates clinical notes. 
     Can be used for either 
     - Generator: Generate clinical notes from patient summaries
     - Direct: Generate clinical notes from patient-doctor conversations
@@ -39,13 +91,13 @@ def generate(model_name,
         - model_path: Path to the model.
         - data_path: Path to the data file with dialog or patient summaries. 
         - output_path: Path to the output file with generated notes
+        - num_samples: Number of samples to generate (default: None --> all)
+        - mode: 'summarizer' or 'generator'
     '''
-
-    if not os.path.exists(model_path):
-        raise FileNotFoundError(f'Model not found at {model_path}.')
-    
     try: 
         print(f"Loading model {model_name} from {model_path}...")
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f'Model not found at {model_path}.')
         model = AutoModelForCausalLM.from_pretrained(model_path, use_cache=True, device_map="auto")
         tokenizer = AutoTokenizer.from_pretrained(model_path, use_cache=False)
     except Exception as e:
@@ -71,7 +123,7 @@ def generate(model_name,
 
     for i, row in tqdm(dataset.iterrows(), total=len(dataset), 
                        desc=f"Generating answers from {model_name}"):
-        prompt = row['prompt'] + '\nNow, generate the patient summary: \n\n{'
+        prompt = row['prompt'] + '\nNow, generate the patient summary: \n\n{\n'
         print(f'\n\nPrompt: {prompt}')
         answer = pipe(prompt)[0]['generated_text']
         dataset.loc[i, 'pred'] = answer
@@ -106,6 +158,9 @@ if __name__ == "__main__":
                         type=int,
                         default=None,
                         help='Number of samples to generate')
+    parser.add_argument('--mode',
+                        type=str,
+                        default='summarizer',
+                        help='Mode of inference: summarizer or generator')
     args = parser.parse_args()
-
-    generate(args.model_name, args.model_path, args.data_path, args.output_path, args.num_samples)
+    generate(args.model_name, args.model_path, args.data_path, args.output_path, args.num_samples, args.mode)

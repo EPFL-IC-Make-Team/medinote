@@ -11,7 +11,6 @@ import shutil
 import pandas as pd
 
 from chat import *
-from inference import *
 
 
 def make_prompts(instruction, note=None, dialogue=None, template=None):
@@ -34,6 +33,15 @@ def make_prompts(instruction, note=None, dialogue=None, template=None):
         \nIf a field is not mentioned in the dialogue, simply write \"feature\": None."
     return sys_prompt, usr_prompt
 
+def load_template(template_path):
+    '''
+    Loads the JSON patient summary template from the path. 
+    '''
+    if not os.path.exists(template_path):
+        raise FileNotFoundError(f'Template not found at {template_path}.')
+    with open(template_path) as f:
+        template = json.dumps(json.load(f), indent=4)
+    return template
 
 def extract(
         model,
@@ -78,10 +86,7 @@ def extract(
         notechat_batch = notechat_batch[~notechat_batch['idx'].isin(ids_done)]
 
     print("Loading template...")
-    if not os.path.exists(template_path):
-        raise ValueError(f'Template file {template_path} not found.')
-    with open(template_path) as f:
-        template = json.dumps(json.load(f), indent=4)
+    template = load_template(template_path)
 
     print("Loading instructions...")
     instruction = load_file(instruction_path)
