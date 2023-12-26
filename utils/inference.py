@@ -68,23 +68,23 @@ def check_summary(answer, prev_answer, template_path):
     Given the (potentially partial) model output, check whether all fields are filled. 
     Otherwise, outputs the features that are missing. 
     '''
-
-    answer = complete_json(answer)
-    if answer is None:
-        return False, {}
-    full_answer = prev_answer.update(answer)
-
     if not os.path.exists(template_path):
         raise FileNotFoundError(f'Template not found at {template_path}.')
     with open(template_path) as f:
         template = json.load(f)
+
+    answer = complete_json(answer)
+    if answer is None:
+        return False, template
+    
+    full_answer = prev_answer.update(answer)
 
     missing = {}
     for key in template.keys():
         if key not in full_answer.keys():
             missing[key] = template[key]
     valid = (len(missing) == 0)
-    return valid, missing
+    return valid, missing, full_answer
 
 
 # ----------------------- Running inference ----------------------- #
@@ -159,7 +159,7 @@ def generate(
             print(f'\n\n### Answer: \n\n{answer}')
 
         elif mode == 'summarizer': 
-            prev_answers = {}
+            prev_answer = {}
             valid = False
             missing = {}
             while not valid:
@@ -174,13 +174,12 @@ def generate(
                     
                 print(f'\n\n### PROMPT:\n\n{prompt}')
                 partial_answer = '{\n'+pipe(prompt)[0]['generated_text']
-                print(f'\n\n### PARTIAL ANSWER:\n\n{partial_answer}')
-                valid, missing = check_summary(partial_answer, prev_answers, template_path)
-                prev_answers.update(json.loads(partial_answer))
+                print(f'\n\n### PARTIAL ANSWER:\n\n{partial_answer}\n\n')
+                valid, missing, prev_answer = check_summary(partial_answer, prev_answer, template_path)
                 print('\n\n\nCHECKING SUMMARY')
                 print(f'\n\n### VALID: {valid}')
                 print(f'\n\n### MISSING {len(missing)} features:\n\n{missing} \n\n')
-            answer = prev_answers
+            answer = prev_answer
             print(f'\n\nFINAL ANSWER: \n\n{answer}')
         
         dataset.loc[i, 'pred'] = answer
