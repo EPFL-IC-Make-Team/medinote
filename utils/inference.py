@@ -24,18 +24,12 @@ class StoppingCriteriaSub(StoppingCriteria):
         self.stops = self.stops[i]
 
 
-
 SUMMARIZER_PARAMETERS = {
     'max_new_tokens': 1536,
     'do_sample': True,
     'top_k': 10,
     'num_return_sequences': 1,
-    'return_full_text': False,
-
-
-
-
-
+    'return_full_text': False
 }
 
 GENERATOR_PARAMETERS = {
@@ -150,7 +144,9 @@ def generate(
         if template_path is None:
             raise ValueError(f"Template path must be specified for summarizer mode.")
         stop_word = '}\n}'
-        stop_words_ids = tokenizer.encode(stop_word, add_prefix_space = False)
+        stop_words_ids = tokenizer(stop_word, return_tensors="pt").input_ids.squeeze(0)
+        print(f"Stop words: {stop_word}")
+        print(f"Stop words ids: {stop_words_ids}")
         stopping_criteria = StoppingCriteriaSub(stop_words_ids)
 
     elif mode == 'generator':
