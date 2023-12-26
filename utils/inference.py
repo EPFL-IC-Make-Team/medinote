@@ -11,8 +11,8 @@ from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers import pipeline
 
-from data import *
-from generate import *
+from utils.data import formatting
+
 
 
 SUMMARIZER_PARAMETERS = {
@@ -31,6 +31,18 @@ GENERATOR_PARAMETERS = {
     'return_full_text': False
 }
 
+# ----------------------- Summarizer inference utilities ----------------------- #
+
+def load_template(template_path):
+    '''
+    Loads the JSON patient summary template from the path. 
+    '''
+    if not os.path.exists(template_path):
+        raise FileNotFoundError(f'Template not found at {template_path}.')
+    with open(template_path) as f:
+        template = json.dumps(json.load(f), indent=4)
+    return template
+
 def complete_json(text): 
     ''' Format a (potentially partial) JSON string to be valid. '''
     json_string = text
@@ -38,15 +50,21 @@ def complete_json(text):
         if not json_string:
             raise ValueError("Couldn't fix JSON")
         try:
-            data = json.loads(json_string + "]")
+            data = json.loads(json_string + '}')
         except json.decoder.JSONDecodeError:
             json_string = json_string[:-1]
             continue
         break
     return data
 
+def join_jsons(answers):
+    ''' Join multiple JSON strings into a single JSON string. '''
+    json_dict = {}
+    for answer in answers:
+        json_dict.update(json.loads(answer))
+    return json_dict
 
-def check_summary(text, template_path): 
+def check_summary(answer, prev_answers, template_path): 
     '''
     Temporary fix for limited context length. 
     Loads the JSON patient summary template from the path. 
@@ -54,28 +72,22 @@ def check_summary(text, template_path):
     check whether all fields are filled. 
     Otherwise, outputs the features that are missing. 
     '''
-    # Load JSON string
-    try: 
-        data = complete_json('{\n' + text)
-    except ValueError as e:
-        return False, None
+    answer = complete_json(answer)
+    answer = join_jsons([answer, *prev_answers])
 
-    # Load JSON template (with or without descriptions)
     if not os.path.exists(template_path):
         raise FileNotFoundError(f'Template not found at {template_path}.')
     with open(template_path) as f:
+        print(f"Loading template from {template_path}...")
+        print(f"Template: {json.dumps(json.load(f), indent=4)}")
         template = json.load(f)
-    
-    # Find all missing features from the template
+
     missing = {}
     for key in template.keys():
-        if key not in data.keys():
+        if key not in answer.keys():
             missing[key] = template[key]
-
-    if len(missing) == 0: 
-        return True, {}
-    else:
-        return False, missing
+    valid = (len(missing) == 0)
+    return valid, missing
 
 
 # ----------------------- Running inference ----------------------- #
@@ -111,6 +123,7 @@ def generate(
     try:
         model = AutoModelForCausalLM.from_pretrained(model_path, use_cache=True, device_map="auto")
         tokenizer = AutoTokenizer.from_pretrained(model_path, use_cache=False)
+        print(f"Model is running on {torch.cuda.device_count()} GPUs.")
     except Exception as e:
         raise ValueError(f"Error when loading model and tokenizer from {model_path}:\n{e}")
     model.eval()
@@ -129,47 +142,49 @@ def generate(
         gen_parameters = GENERATOR_PARAMETERS
     else:
         raise ValueError(f"Invalid mode {mode}. Must be 'summarizer' or 'generator'.")
-    try:
-        pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, 
-                        eos_token_id=tokenizer.eos_token_id, 
-                        pad_token_id=tokenizer.eos_token_id,
-                        **gen_parameters)
-    except Exception as e:
-        raise ValueError(f"Error when initializing pipeline:\n{e}")
+    pipe = pipeline("text-generation", 
+                    model=model, 
+                    tokenizer=tokenizer, 
+                    eos_token_id=tokenizer.eos_token_id, 
+                    pad_token_id=tokenizer.eos_token_id,
+                    **gen_parameters)
     
     if output_path is None:
         output_path = data_path.replace('.jsonl', f'-{model_name}.jsonl')
 
     for i, row in tqdm(dataset.iterrows(), total=len(dataset), 
                        desc=f"Generating answers from {model_name}"):
-        prompt = row['prompt']
-        print(f'\n\nPrompt: {prompt}')
+        
+        if mode == 'generator':
+            prompt = row['prompt'] + '\nNow, generate the corresponding clinical note: \n\n'
+            print(f'\n\nPrompt: {prompt}')
+            answer = pipe(row['prompt'])[0]['generated_text']
+            print(f'\n\nAnswer: \n\n{answer}')
 
-        # Generate answer until all fields are filled
-        if mode == 'summarizer':
+        elif mode == 'summarizer': 
+            # Generate answer until all fields are filled
+            answers = []
             valid = False
             missing = {}
             while not valid:
                 if missing == {}:
-                    prompt += '\nNow, generate the full patient summary: \n\n{\n'
+                    prompt = row['prompt'] + '\nNow, generate the full patient summary: \n\n{\n'
                 else: 
-                    prompt += '\nNow, generate the patient summary for the given features: \n\n' \
-                        + json.dumps(missing, indent=4) + '\n\nPatient summary: \n\n{\n'
-                answer = pipe(prompt)[0]['generated_text']
-                valid, missing = check_summary(answer, template_path)
-                print(f'\n\nAnswer: \n\n{answer}')
+                    prompt = row['prompt'] + '\nNow, generate the patient summary for the following features only: \n\n' \
+                        + formatting(json.dumps(missing)) + '\n\nPatient summary: \n\n{\n'
+                print(f'\n\nPrompt: {prompt}')
+                partial_answer = '{\n'+pipe(prompt)[0]['generated_text']
+                print(f'\n\nPARTIAL ANSWER: \n\n{partial_answer}')
+                valid, missing = check_summary(partial_answer, answers, template_path)
+                answers += [partial_answer]
+                print('CHECKING SUMMARY')
                 print(f'\n\nValid: {valid}')
                 print(f'\n\nMissing: {missing}')
-
-        # Generate answer directly
-        elif mode == 'generator':
-            answer = pipe(prompt)[0]['generated_text']
-            
-        else:
-            raise ValueError(f"Invalid mode {mode}. Must be 'summarizer' or 'generator'.")
+            # Concatenate all answers into a single dictionary
+            answer = join_jsons(answers)
+            print(f'\n\nFINAL ANSWER: \n\n{answer}')
         
         dataset.loc[i, 'pred'] = answer
-        print(f'\n\nAnswer: \n\n{answer}')
         #if i % 10 == 0: 
             #save_file(dataset, output_path)
         if num_samples and i >= num_samples:

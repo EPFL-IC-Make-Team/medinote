@@ -10,7 +10,7 @@ import argparse
 import shutil
 import pandas as pd
 
-from chat import *
+from utils.chat import *
 
 
 def make_prompts(instruction, note=None, dialogue=None, template=None):
