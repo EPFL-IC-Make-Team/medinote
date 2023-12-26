@@ -25,7 +25,8 @@ PARAMETERS = {
 def generate(model_name, 
              model_path, 
              data_path,
-             output_path=None):
+             output_path=None, 
+             num_samples=None):
     '''
     Loads a model and generates summaries for all the files in the path.
     Can be used for either 
@@ -78,6 +79,8 @@ def generate(model_name,
         print(f'\n\nAnswer: \n\n{answer}')
         if i % 10 == 0: 
             save_file(dataset, output_path)
+        if num_samples and i >= num_samples:
+            break
     save_file(dataset, output_path)
     return dataset
     
@@ -100,6 +103,10 @@ if __name__ == "__main__":
                         type=str, 
                         default=None, 
                         help='Path to the output file with generated notes. If None, saved to directory of data_path.')
+    parser.add_argument('--num_samples',
+                        type=int,
+                        default=None,
+                        help='Number of samples to generate')
     args = parser.parse_args()
 
-    generate(args.model_name, args.model_path, args.data_path, args.output_path)
+    generate(args.model_name, args.model_path, args.data_path, args.output_path, args.num_samples)
