@@ -29,8 +29,6 @@ SUMMARIZER_PARAMETERS = {
     'do_sample': True,
     'num_beams': 1,
     'top_p': 0.95,
-    'repetition_penalty': 1.0,
-    'length_penalty': 0.5,
     'num_return_sequences': 1,
     'return_full_text': False,
     'max_time': 300,
