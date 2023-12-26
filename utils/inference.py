@@ -147,7 +147,7 @@ def generate(
         gen_parameters = SUMMARIZER_PARAMETERS
         if template_path is None:
             raise ValueError(f"Template path must be specified for summarizer mode.")
-        stoppers = ['}\n}', 'answer\n']
+        stoppers = ['}\n}', '} \n}', '{\"nvisit motivation']
         stop_words_ids = tokenizer(stoppers, add_special_tokens=False)['input_ids']
         print(f"Stop words ids: {stop_words_ids}")
         # decode and print for debugging
