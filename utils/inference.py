@@ -11,7 +11,7 @@ from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers import pipeline
 
-from utils.data import formatting
+from data import *
 
 
 
@@ -64,16 +64,16 @@ def join_jsons(answers):
         json_dict.update(json.loads(answer))
     return json_dict
 
-def check_summary(answer, prev_answers, template_path): 
+def check_summary(answer, prev_answer, template_path): 
     '''
     Temporary fix for limited context length. 
+    
     Loads the JSON patient summary template from the path. 
-    Given the (potentially partial) model output, 
-    check whether all fields are filled. 
+    Given the (potentially partial) model output, check whether all fields are filled. 
     Otherwise, outputs the features that are missing. 
     '''
     answer = complete_json(answer)
-    answer = join_jsons([answer, *prev_answers])
+    answer = prev_answer.update(json.loads(answer))
 
     if not os.path.exists(template_path):
         raise FileNotFoundError(f'Template not found at {template_path}.')
@@ -163,7 +163,7 @@ def generate(
 
         elif mode == 'summarizer': 
             # Generate answer until all fields are filled
-            answers = []
+            prev_answer = {}
             valid = False
             missing = {}
             while not valid:
@@ -175,13 +175,12 @@ def generate(
                 print(f'\n\nPrompt: {prompt}')
                 partial_answer = '{\n'+pipe(prompt)[0]['generated_text']
                 print(f'\n\nPARTIAL ANSWER: \n\n{partial_answer}')
-                valid, missing = check_summary(partial_answer, answers, template_path)
-                answers += [partial_answer]
+                valid, missing = check_summary(partial_answer, prev_answer, template_path)
+                prev_answer.update(json.loads(partial_answer))
                 print('CHECKING SUMMARY')
                 print(f'\n\nValid: {valid}')
                 print(f'\n\nMissing: {missing}')
-            # Concatenate all answers into a single dictionary
-            answer = join_jsons(answers)
+            answer = prev_answer
             print(f'\n\nFINAL ANSWER: \n\n{answer}')
         
         dataset.loc[i, 'pred'] = answer
