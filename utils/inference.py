@@ -25,15 +25,19 @@ class StoppingCriteriaSub(StoppingCriteria):
 
 
 SUMMARIZER_PARAMETERS = {
-    'max_new_tokens': 1536,
+    'max_length': 2048,
     'do_sample': True,
-    'top_k': 10,
+    'num_beams': 1,
+    'top_p': 0.95,
+    'repetition_penalty': 1.0,
+    'length_penalty': 1.0,
     'num_return_sequences': 1,
-    'return_full_text': False
+    'return_full_text': False,
+    'max_time': 300,
 }
 
 GENERATOR_PARAMETERS = {
-    'max_new_tokens': 1024,
+    'max_length': 2048, 
     'do_sample': True,
     'top_k': 10,
     'num_return_sequences': 1,
@@ -143,7 +147,8 @@ def generate(
         gen_parameters = SUMMARIZER_PARAMETERS
         if template_path is None:
             raise ValueError(f"Template path must be specified for summarizer mode.")
-        stop_words_ids = tokenizer('}\n}', return_tensors="pt", add_special_tokens=False).input_ids
+        stoppers = ['}\n}', 'answer\n']
+        stop_words_ids = tokenizer(stoppers, add_special_tokens=False)['input_ids']
         print(f"Stop words ids: {stop_words_ids}")
         # decode and print for debugging
         stop_words_ids_check = tokenizer.decode(stop_words_ids[0], skip_special_tokens=True)
