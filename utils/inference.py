@@ -119,10 +119,10 @@ def generate_summary(row, pipe, template_path):
                 + '\n\nPatient summary: \n\n{\n'
             
         print(f'\n\n### PROMPT:\n\n{prompt}')
-        partial_answer = starter + pipe(prompt)[0]['generated_text'] + '}\n}'
+        partial_answer = starter + pipe(prompt)[0]['generated_text']
         limiter = re.search(r'}\s*}', partial_answer)
         if limiter:
-            partial_answer = partial_answer[:limiter.start()]
+            partial_answer = partial_answer[:limiter.end()]
 
         print(f'\n\n### PARTIAL ANSWER:\n\n{partial_answer}\n\n')
         valid, missing, prev_answer = check_summary(partial_answer, prev_answer, template_path)
