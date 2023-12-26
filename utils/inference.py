@@ -208,7 +208,7 @@ def generate(
             answer = prev_answer
             print(f'\n\nFINAL ANSWER: \n\n{answer}')
         
-        dataset.loc[i, 'pred'] = answer
+        dataset.at[i, 'pred'] = json.dumps(answer)
         #if i % 10 == 0: 
             #save_file(dataset, output_path)
         if num_samples and i >= num_samples:
