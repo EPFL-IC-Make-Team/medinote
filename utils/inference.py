@@ -4,8 +4,8 @@ Inference utilities.
 
 import torch
 import os
+import re
 import argparse
-import pandas as pd
 import json as json
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -200,6 +200,11 @@ def generate(
                     
                 print(f'\n\n### PROMPT:\n\n{prompt}')
                 partial_answer = '{\n'+pipe(prompt)[0]['generated_text']
+                partial_answer = re.sub(r'}\s*}', '}', partial_answer)
+                limiter = re.search(r'}\s*}', str)
+                if limiter:
+                    partial_answer = partial_answer[:limiter.start()]
+
                 print(f'\n\n### PARTIAL ANSWER:\n\n{partial_answer}\n\n')
                 valid, missing, prev_answer = check_summary(partial_answer, prev_answer, template_path)
                 print('\n\n\nCHECKING SUMMARY')
