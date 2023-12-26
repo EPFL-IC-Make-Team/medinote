@@ -13,15 +13,10 @@ from transformers import pipeline
 from data import *
 
 PARAMETERS = {
-    'best_of': 1,
-    'presence_penalty': 0.0,
-    'frequency_penalty': 0.0,
-    'repetition_penalty': 1.0,
-    'max_new_tokens': 1000,
-    'top_k': -1,
-    'top_p': 1.0,
-    'temperature': 0.0,
-    'num_return_sequences': 2,
+    'max_new_tokens': 1400,
+    'do_sample': True,
+    'top_k': 10,
+    'num_return_sequences': 1,
     'return_full_text': False
 }
 
@@ -86,11 +81,12 @@ def generate(model_name,
 
     for i, row in tqdm(dataset.iterrows(), total=len(dataset), 
                        desc=f"Generating answers from {model_name}"):
-        print(f'\n\nPrompt: \n\n{row["prompt"]}')
-        answer = pipe(row['prompt'])[0]['generated_text']
+        prompt = row['prompt'] + '\nNow, generate the patient summary: \n\n{'
+        print(f'\n\nPrompt: {prompt}')
+        answer = pipe(prompt)[0]['generated_text']
         dataset.loc[i, 'pred'] = answer
         print(f'\n\nAnswer: \n\n{answer}')
-        if i % 10 == 0: 
+        #if i % 10 == 0: 
             #save_file(dataset, output_path)
         if num_samples and i >= num_samples:
             break
