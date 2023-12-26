@@ -9,7 +9,7 @@ import pandas as pd
 import json as json
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from transformers import pipeline, StoppingCriteria
+from transformers import pipeline, StoppingCriteria, StoppingCriteriaList
 
 from data import *
 
@@ -143,11 +143,13 @@ def generate(
         gen_parameters = SUMMARIZER_PARAMETERS
         if template_path is None:
             raise ValueError(f"Template path must be specified for summarizer mode.")
-        stop_word = '}\n}'
-        stop_words_ids = tokenizer(stop_word, return_tensors="pt").input_ids.squeeze(0)
-        print(f"Stop words: {stop_word}")
+        stop_words_ids = tokenizer('}\n}', return_tensors="pt", add_special_tokens=False).input_ids
         print(f"Stop words ids: {stop_words_ids}")
-        stopping_criteria = StoppingCriteriaSub(stop_words_ids)
+        # decode and print for debugging
+        stop_words_ids_check = tokenizer.decode(stop_words_ids[0], skip_special_tokens=True)
+        print(f"stop_words_ids_check: {stop_words_ids_check}")
+        stopping_criteria = StoppingCriteriaList([StoppingCriteriaSub(stops=stop_words_ids)])
+
 
     elif mode == 'generator':
         gen_parameters = GENERATOR_PARAMETERS
