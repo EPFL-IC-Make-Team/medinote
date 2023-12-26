@@ -179,7 +179,7 @@ def generate(
         gen_parameters = SUMMARIZER_PARAMETERS
         if template_path is None:
             raise ValueError(f"Template path must be specified for summarizer mode.")
-        stoppers = ['}\n}', 'visit motivation']
+        stoppers = ['visit motivation']
         stops = tokenizer(stoppers, add_special_tokens=False)['input_ids']
         stopping_criteria = StoppingCriteriaList([StoppingCriteriaSub(stops=stops)])
     elif mode == 'generator':
