@@ -44,11 +44,14 @@ def load_template(template_path):
     return template
 
 def complete_json(text): 
-    ''' Format a (potentially partial) JSON string to be valid. '''
+    ''' 
+    Format a (potentially partial) JSON string. 
+    Removes the last character until the string is valid.
+    '''
     json_string = text
     while True:
         if not json_string:
-            raise ValueError("Couldn't fix JSON")
+            return None
         try:
             data = json.loads(json_string + '}')
         except json.decoder.JSONDecodeError:
@@ -56,13 +59,6 @@ def complete_json(text):
             continue
         break
     return data
-
-def join_jsons(answers):
-    ''' Join multiple JSON strings into a single JSON string. '''
-    json_dict = {}
-    for answer in answers:
-        json_dict.update(json.loads(answer))
-    return json_dict
 
 def check_summary(answer, prev_answer, template_path): 
     '''
@@ -72,19 +68,20 @@ def check_summary(answer, prev_answer, template_path):
     Given the (potentially partial) model output, check whether all fields are filled. 
     Otherwise, outputs the features that are missing. 
     '''
+
     answer = complete_json(answer)
-    answer = prev_answer.update(json.loads(answer))
+    if answer is None:
+        return False, {}
+    full_answer = prev_answer.update(answer)
 
     if not os.path.exists(template_path):
         raise FileNotFoundError(f'Template not found at {template_path}.')
     with open(template_path) as f:
-        print(f"Loading template from {template_path}...")
-        print(f"Template: {json.dumps(json.load(f), indent=4)}")
         template = json.load(f)
 
     missing = {}
     for key in template.keys():
-        if key not in answer.keys():
+        if key not in full_answer.keys():
             missing[key] = template[key]
     valid = (len(missing) == 0)
     return valid, missing
@@ -157,30 +154,33 @@ def generate(
         
         if mode == 'generator':
             prompt = row['prompt'] + '\nNow, generate the corresponding clinical note: \n\n'
-            print(f'\n\nPrompt: {prompt}')
+            print(f'\n\n### Prompt:\n\n{prompt}')
             answer = pipe(row['prompt'])[0]['generated_text']
-            print(f'\n\nAnswer: \n\n{answer}')
+            print(f'\n\n### Answer: \n\n{answer}')
 
         elif mode == 'summarizer': 
-            # Generate answer until all fields are filled
-            prev_answer = {}
+            prev_answers = {}
             valid = False
             missing = {}
             while not valid:
                 if missing == {}:
-                    prompt = row['prompt'] + '\nNow, generate the full patient summary: \n\n{\n'
+                    prompt = row['prompt'] \
+                        + '\nNow, generate the full patient summary: \n\n{\n'
                 else: 
-                    prompt = row['prompt'] + '\nNow, generate the patient summary for the following features only: \n\n' \
-                        + formatting(json.dumps(missing)) + '\n\nPatient summary: \n\n{\n'
-                print(f'\n\nPrompt: {prompt}')
+                    prompt = row['prompt'] \
+                        + '\nNow, generate the patient summary for the following features only: \n\n' \
+                        + formatting(json.dumps(missing)) \
+                        + '\n\nPatient summary: \n\n{\n'
+                    
+                print(f'\n\n### PROMPT:\n\n{prompt}')
                 partial_answer = '{\n'+pipe(prompt)[0]['generated_text']
-                print(f'\n\nPARTIAL ANSWER: \n\n{partial_answer}')
-                valid, missing = check_summary(partial_answer, prev_answer, template_path)
-                prev_answer.update(json.loads(partial_answer))
-                print('CHECKING SUMMARY')
-                print(f'\n\nValid: {valid}')
-                print(f'\n\nMissing: {missing}')
-            answer = prev_answer
+                print(f'\n\n### PARTIAL ANSWER:\n\n{partial_answer}')
+                valid, missing = check_summary(partial_answer, prev_answers, template_path)
+                prev_answers.update(json.loads(partial_answer))
+                print('\n\n\nCHECKING SUMMARY')
+                print(f'\n\n### VALID: {valid}')
+                print(f'\n\n### MISSING {len(missing)} features:\n\n{missing} \n\n')
+            answer = prev_answers
             print(f'\n\nFINAL ANSWER: \n\n{answer}')
         
         dataset.loc[i, 'pred'] = answer
