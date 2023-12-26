@@ -61,13 +61,11 @@ def complete_json(text):
     Format a (potentially partial) JSON string. 
     Removes the last character until the string is valid.
     '''
-    print('COMPLETING JSON')
     json_string = text
     while True:
         if not json_string:
             return None
         try:
-            print('\n\nLOADING\n', (json_string + '}')[-20:])
             data = json.loads(json_string + '}')
         except json.decoder.JSONDecodeError:
             json_string = json_string[:-1]
@@ -118,10 +116,11 @@ def generate_summary(row, pipe, template_path):
             prompt = row['prompt'] \
                 + '\n\nNow, generate the patient summary for the following features only: \n\n' \
                 + formatting(json.dumps(missing)) \
-                + '\n\nPatient summary: \n\n{\n'
+                + '\n\nPatient summary: \n\n{'
             
         print(f'\n\n### PROMPT:\n\n{prompt}')
-        partial_answer = starter + pipe(prompt)[0]['generated_text']
+        partial_answer = starter if missing == {} else '{\n'
+        partial_answer += pipe(prompt)[0]['generated_text']
         limiter = re.search(r'}\s*}', partial_answer)
         if limiter:
             partial_answer = partial_answer[:limiter.end()]
