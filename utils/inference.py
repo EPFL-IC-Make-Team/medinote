@@ -15,8 +15,16 @@ from data import *
 from generate import *
 
 
-PARAMETERS = {
-    'max_new_tokens': 1400,
+SUMMARIZER_PARAMETERS = {
+    'max_new_tokens': 1536,
+    'do_sample': True,
+    'top_k': 10,
+    'num_return_sequences': 1,
+    'return_full_text': False
+}
+
+GENERATOR_PARAMETERS = {
+    'max_new_tokens': 1024,
     'do_sample': True,
     'top_k': 10,
     'num_return_sequences': 1,
@@ -52,7 +60,7 @@ def check_summary(text, template_path):
     except ValueError as e:
         return False, None
 
-    # Load JSON template
+    # Load JSON template (with or without descriptions)
     if not os.path.exists(template_path):
         raise FileNotFoundError(f'Template not found at {template_path}.')
     with open(template_path) as f:
@@ -79,7 +87,8 @@ def generate(
         data_path,
         output_path=None, 
         num_samples=None, 
-        mode='summarizer'):
+        mode='summarizer',
+        template_path=None):
     '''
     Loads a model and generates clinical notes. 
     Can be used for either 
@@ -93,28 +102,38 @@ def generate(
         - output_path: Path to the output file with generated notes
         - num_samples: Number of samples to generate (default: None --> all)
         - mode: 'summarizer' or 'generator'
+        - template_path: Path to the template file (.json), only for summarizer mode
+
     '''
-    try: 
-        print(f"Loading model {model_name} from {model_path}...")
-        if not os.path.exists(model_path):
-            raise FileNotFoundError(f'Model not found at {model_path}.')
+    print(f"Loading model {model_name} from {model_path}...")
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f'Model not found at {model_path}.')
+    try:
         model = AutoModelForCausalLM.from_pretrained(model_path, use_cache=True, device_map="auto")
         tokenizer = AutoTokenizer.from_pretrained(model_path, use_cache=False)
     except Exception as e:
         raise ValueError(f"Error when loading model and tokenizer from {model_path}:\n{e}")
     model.eval()
 
-    print(f"Loading data from {data_path}...")
+    print(f"\nLoading data from {data_path}...")
     dataset = load_file(data_path)
     dataset['model_name'] = model_name
     dataset['pred'] = ''
 
-    try: 
-        print(f"Initalizing pipeline...")
+    print(f"\nInitalizing pipeline...")
+    if mode == 'summarizer':
+        gen_parameters = SUMMARIZER_PARAMETERS
+        if template_path is None:
+            raise ValueError(f"Template path must be specified for summarizer mode.")
+    elif mode == 'generator':
+        gen_parameters = GENERATOR_PARAMETERS
+    else:
+        raise ValueError(f"Invalid mode {mode}. Must be 'summarizer' or 'generator'.")
+    try:
         pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, 
                         eos_token_id=tokenizer.eos_token_id, 
                         pad_token_id=tokenizer.eos_token_id,
-                        **PARAMETERS)
+                        **gen_parameters)
     except Exception as e:
         raise ValueError(f"Error when initializing pipeline:\n{e}")
     
@@ -123,9 +142,32 @@ def generate(
 
     for i, row in tqdm(dataset.iterrows(), total=len(dataset), 
                        desc=f"Generating answers from {model_name}"):
-        prompt = row['prompt'] + '\nNow, generate the patient summary: \n\n{\n'
+        prompt = row['prompt']
         print(f'\n\nPrompt: {prompt}')
-        answer = pipe(prompt)[0]['generated_text']
+
+        # Generate answer until all fields are filled
+        if mode == 'summarizer':
+            valid = False
+            missing = {}
+            while not valid:
+                if missing == {}:
+                    prompt += '\nNow, generate the full patient summary: \n\n{\n'
+                else: 
+                    prompt += '\nNow, generate the patient summary for the given features: \n\n' \
+                        + json.dumps(missing, indent=4) + '\n\nPatient summary: \n\n{\n'
+                answer = pipe(prompt)[0]['generated_text']
+                valid, missing = check_summary(answer, template_path)
+                print(f'\n\nAnswer: \n\n{answer}')
+                print(f'\n\nValid: {valid}')
+                print(f'\n\nMissing: {missing}')
+
+        # Generate answer directly
+        elif mode == 'generator':
+            answer = pipe(prompt)[0]['generated_text']
+            
+        else:
+            raise ValueError(f"Invalid mode {mode}. Must be 'summarizer' or 'generator'.")
+        
         dataset.loc[i, 'pred'] = answer
         print(f'\n\nAnswer: \n\n{answer}')
         #if i % 10 == 0: 
@@ -162,5 +204,10 @@ if __name__ == "__main__":
                         type=str,
                         default='summarizer',
                         help='Mode of inference: summarizer or generator')
+    parser.add_argument('--template_path',
+                        type=str,
+                        default='data/template.json',
+                        help='Path to the template file (.json), only for summarizer mode')
     args = parser.parse_args()
-    generate(args.model_name, args.model_path, args.data_path, args.output_path, args.num_samples, args.mode)
+    generate(args.model_name, args.model_path, args.data_path, 
+             args.output_path, args.num_samples, args.mode, args.template_path)
