@@ -61,11 +61,13 @@ def complete_json(text):
     Format a (potentially partial) JSON string. 
     Removes the last character until the string is valid.
     '''
+    print('COMPLETING JSON')
     json_string = text
     while True:
         if not json_string:
             return None
         try:
+            print('\n\nLOADING\n', (json_string + '}')[-20:])
             data = json.loads(json_string + '}')
         except json.decoder.JSONDecodeError:
             json_string = json_string[:-1]
