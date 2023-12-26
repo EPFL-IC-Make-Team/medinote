@@ -110,16 +110,16 @@ def generate_summary(row, pipe, template_path):
     while not valid:
         if missing == {}:
             prompt = row['prompt'] \
-                + '\nNow, generate the full patient summary: \n\n' \
+                + '\n\nNow, generate the full patient summary: \n\n' \
                 + starter
         else: 
             prompt = row['prompt'] \
-                + '\nNow, generate the patient summary for the following features only: \n\n' \
+                + '\n\nNow, generate the patient summary for the following features only: \n\n' \
                 + formatting(json.dumps(missing)) \
                 + '\n\nPatient summary: \n\n{\n'
             
         print(f'\n\n### PROMPT:\n\n{prompt}')
-        partial_answer = starter + pipe(prompt)[0]['generated_text']
+        partial_answer = starter + pipe(prompt)[0]['generated_text'] + '}\n}'
         limiter = re.search(r'}\s*}', partial_answer)
         if limiter:
             partial_answer = partial_answer[:limiter.start()]
