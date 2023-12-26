@@ -102,6 +102,38 @@ def check_summary(answer, prev_answer, template_path):
 # ----------------------- Running inference ----------------------- #
     
 
+def generate_summary(row, pipe, template_path): 
+    starter = '{\n"visit motivation": "'
+    prev_answer = {}
+    valid = False
+    missing = {}
+    while not valid:
+        if missing == {}:
+            prompt = row['prompt'] \
+                + '\nNow, generate the full patient summary: \n\n' \
+                + starter
+        else: 
+            prompt = row['prompt'] \
+                + '\nNow, generate the patient summary for the following features only: \n\n' \
+                + formatting(json.dumps(missing)) \
+                + '\n\nPatient summary: \n\n{\n'
+            
+        print(f'\n\n### PROMPT:\n\n{prompt}')
+        partial_answer = starter + pipe(prompt)[0]['generated_text']
+        limiter = re.search(r'}\s*}', partial_answer)
+        if limiter:
+            partial_answer = partial_answer[:limiter.start()]
+
+        print(f'\n\n### PARTIAL ANSWER:\n\n{partial_answer}\n\n')
+        valid, missing, prev_answer = check_summary(partial_answer, prev_answer, template_path)
+        print('\n\n\nCHECKING SUMMARY')
+        print(f'\n\n### VALID: {valid}')
+        print(f'\n\n### MISSING {len(missing)} features:\n\n{missing} \n\n')
+    answer = prev_answer
+    print(f'\n\nFINAL ANSWER: \n\n{answer}')
+    return answer
+
+
 def generate(
         model_name,
         model_path, 
@@ -147,22 +179,14 @@ def generate(
         gen_parameters = SUMMARIZER_PARAMETERS
         if template_path is None:
             raise ValueError(f"Template path must be specified for summarizer mode.")
-        stoppers = ['}\n}', '} \n}', '{\"nvisit motivation']
-        stop_words_ids = tokenizer(stoppers, add_special_tokens=False)['input_ids']
-        print(f"Stop words ids: {stop_words_ids}")
-        # decode and print for debugging
-        stop_words_ids_check = tokenizer.decode(stop_words_ids[0], skip_special_tokens=True)
-        print(f"stop_words_ids_check: {stop_words_ids_check}")
-        stopping_criteria = StoppingCriteriaList([StoppingCriteriaSub(stops=stop_words_ids)])
-
-
+        stoppers = ['}\n}', 'visit motivation']
+        stops = tokenizer(stoppers, add_special_tokens=False)['input_ids']
+        stopping_criteria = StoppingCriteriaList([StoppingCriteriaSub(stops=stops)])
     elif mode == 'generator':
         gen_parameters = GENERATOR_PARAMETERS
         stopping_criteria = None
-
     else:
         raise ValueError(f"Invalid mode {mode}. Must be 'summarizer' or 'generator'.")
-    
     pipe = pipeline("text-generation", 
                     model=model, 
                     tokenizer=tokenizer, 
@@ -184,36 +208,11 @@ def generate(
             print(f'\n\n### Answer: \n\n{answer}')
 
         elif mode == 'summarizer': 
-
-            prev_answer = {}
-            valid = False
-            missing = {}
-            while not valid:
-                if missing == {}:
-                    prompt = row['prompt'] \
-                        + '\nNow, generate the full patient summary: \n\n{\n'
-                else: 
-                    prompt = row['prompt'] \
-                        + '\nNow, generate the patient summary for the following features only: \n\n' \
-                        + formatting(json.dumps(missing)) \
-                        + '\n\nPatient summary: \n\n{\n'
-                    
-                print(f'\n\n### PROMPT:\n\n{prompt}')
-                partial_answer = '{\n'+pipe(prompt)[0]['generated_text']
-                partial_answer = re.sub(r'}\s*}', '}', partial_answer)
-                limiter = re.search(r'}\s*}', str)
-                if limiter:
-                    partial_answer = partial_answer[:limiter.start()]
-
-                print(f'\n\n### PARTIAL ANSWER:\n\n{partial_answer}\n\n')
-                valid, missing, prev_answer = check_summary(partial_answer, prev_answer, template_path)
-                print('\n\n\nCHECKING SUMMARY')
-                print(f'\n\n### VALID: {valid}')
-                print(f'\n\n### MISSING {len(missing)} features:\n\n{missing} \n\n')
-            answer = prev_answer
-            print(f'\n\nFINAL ANSWER: \n\n{answer}')
+            answer = generate_summary(row, pipe, template_path)
+            answer = json.dumps(answer)
+            print(f'\n\n### Answer: \n\n{answer}')
         
-        dataset.at[i, 'pred'] = json.dumps(answer)
+        dataset.at[i, 'pred'] = answer
         #if i % 10 == 0: 
             #save_file(dataset, output_path)
         if num_samples and i >= num_samples:
