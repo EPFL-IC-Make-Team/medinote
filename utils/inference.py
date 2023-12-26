@@ -12,6 +12,7 @@ from transformers import pipeline
 
 from data import *
 
+
 PARAMETERS = {
     'max_new_tokens': 1400,
     'do_sample': True,
@@ -19,17 +20,6 @@ PARAMETERS = {
     'num_return_sequences': 1,
     'return_full_text': False
 }
-
-# best_of=1,
-#         presence_penalty=0.0,
-#         frequency_penalty=1.0,
-#         top_k=-1,
-#         top_p=1.0,
-#         temperature=temperature,
-#         stop=tokenizer.eos_token_id,
-#         use_beam_search=False,
-#         max_tokens=1024,
-#         logprobs=5
 
 # ----------------------- Running inference ----------------------- #
 
