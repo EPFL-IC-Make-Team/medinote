@@ -88,13 +88,12 @@ def check_summary(answer, prev_answer, template_path):
 
     answer = complete_json(answer)
     if answer is None:
-        return False, template
+        print('COULD NOT PARSE ANSWER')
+        return False, template, prev_answer
     prev_answer.update(answer)
+    print(f'\n\n### NEW ANSWER:\n\n{prev_answer}\n\n')
 
-    missing = {}
-    for key in template.keys():
-        if key not in prev_answer.keys():
-            missing[key] = template[key]
+    missing = {key: template[key] for key in template.keys() if key not in prev_answer.keys()}
     valid = (len(missing) == 0)
     return valid, missing, prev_answer
 
@@ -103,29 +102,29 @@ def check_summary(answer, prev_answer, template_path):
     
 
 def generate_summary(row, pipe, template_path): 
-    starter = '{\n"visit motivation": "'
     prev_answer = {}
     valid = False
     missing = {}
     while not valid:
         if missing == {}:
+            starter = '{\n"visit motivation": "'
             prompt = row['prompt'] \
                 + '\n\nNow, generate the full patient summary: \n\n' \
                 + starter
         else: 
+            starter = '{'
             prompt = row['prompt'] \
                 + '\n\nNow, generate the patient summary for the following features only: \n\n' \
                 + formatting(json.dumps(missing)) \
                 + '\n\nPatient summary: \n\n{'
             
         print(f'\n\n### PROMPT:\n\n{prompt}')
-        partial_answer = starter if missing == {} else '{\n'
-        partial_answer += pipe(prompt)[0]['generated_text']
+        partial_answer = starter + pipe(prompt)[0]['generated_text']
         limiter = re.search(r'}\s*}', partial_answer)
         if limiter:
             partial_answer = partial_answer[:limiter.end()]
-
         print(f'\n\n### PARTIAL ANSWER:\n\n{partial_answer}\n\n')
+
         valid, missing, prev_answer = check_summary(partial_answer, prev_answer, template_path)
         print('\n\n\nCHECKING SUMMARY')
         print(f'\n\n### VALID: {valid}')
