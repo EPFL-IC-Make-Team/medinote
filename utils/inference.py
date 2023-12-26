@@ -76,15 +76,14 @@ def check_summary(answer, prev_answer, template_path):
     answer = complete_json(answer)
     if answer is None:
         return False, template
-    
-    full_answer = prev_answer.update(answer)
+    prev_answer.update(answer)
 
     missing = {}
     for key in template.keys():
-        if key not in full_answer.keys():
+        if key not in prev_answer.keys():
             missing[key] = template[key]
     valid = (len(missing) == 0)
-    return valid, missing, full_answer
+    return valid, missing, prev_answer
 
 
 # ----------------------- Running inference ----------------------- #
