@@ -29,7 +29,7 @@ SUMMARIZER_PARAMETERS = {
     'do_sample': True,
     'num_beams': 1,
     'top_p': 0.95,
-    'repetition_penalty': 1.0,
+    'repetition_penalty': 0.2, # Longer summaries encouraged!
     'length_penalty': 1.0,
     'num_return_sequences': 1,
     'return_full_text': False,
@@ -113,8 +113,11 @@ def generate_summary(row, pipe, template_path):
                 + starter
         else: 
             starter = '{'
+            if missing != {}:
+                starter += f'\n"{list(missing.keys())[0]}": "'
+
             prompt = row['prompt'] \
-                + '\n\nNow, fill in the following template: \n\n' \
+                + '\n\nNow, you will fill in the following template: \n\n' \
                 + formatting(json.dumps(missing, indent=4)) \
                 + '\n\n' + starter
             
