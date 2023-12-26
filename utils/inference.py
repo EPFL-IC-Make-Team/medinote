@@ -88,7 +88,11 @@ def check_summary(answer, prev_answer, template_path):
     if answer is None:
         print('COULD NOT PARSE ANSWER')
         return False, template, prev_answer
-    prev_answer.update(answer)
+    
+    for key in answer.keys():
+        if key not in prev_answer.keys():
+            prev_answer[key] = answer[key]
+    
     print(f'\n\n### NEW ANSWER:\n\n{prev_answer}\n\n')
 
     missing = {key: template[key] for key in template.keys() if key not in prev_answer.keys()}
