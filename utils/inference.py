@@ -114,9 +114,9 @@ def generate_summary(row, pipe, template_path):
         else: 
             starter = '{'
             prompt = row['prompt'] \
-                + '\n\nNow, generate the patient summary for the following features only: \n\n' \
-                + formatting(json.dumps(missing)) \
-                + '\n\nPatient summary: \n\n{'
+                + '\n\nNow, fill in the following template: \n\n' \
+                + formatting(json.dumps(missing, indent=4)) \
+                + '\n\n' + starter
             
         print(f'\n\n### PROMPT:\n\n{prompt}')
         partial_answer = starter + pipe(prompt)[0]['generated_text']
