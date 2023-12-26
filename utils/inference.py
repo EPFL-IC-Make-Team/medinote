@@ -9,9 +9,19 @@ import pandas as pd
 import json as json
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from transformers import pipeline
+from transformers import pipeline, StoppingCriteria
 
 from data import *
+
+class StoppingCriteriaSub(StoppingCriteria):
+
+    def __init__(self, stops = []):
+      StoppingCriteria.__init__(self), 
+
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, stops = []):
+      self.stops = stops
+      for i in range(len(stops)):
+        self.stops = self.stops[i]
 
 
 
@@ -20,7 +30,12 @@ SUMMARIZER_PARAMETERS = {
     'do_sample': True,
     'top_k': 10,
     'num_return_sequences': 1,
-    'return_full_text': False
+    'return_full_text': False,
+
+
+
+
+
 }
 
 GENERATOR_PARAMETERS = {
@@ -134,15 +149,23 @@ def generate(
         gen_parameters = SUMMARIZER_PARAMETERS
         if template_path is None:
             raise ValueError(f"Template path must be specified for summarizer mode.")
+        stop_word = '}\n}'
+        stop_words_ids = tokenizer.encode(stop_word, add_prefix_space = False)
+        stopping_criteria = StoppingCriteriaSub(stop_words_ids)
+
     elif mode == 'generator':
         gen_parameters = GENERATOR_PARAMETERS
+        stopping_criteria = None
+
     else:
         raise ValueError(f"Invalid mode {mode}. Must be 'summarizer' or 'generator'.")
+    
     pipe = pipeline("text-generation", 
                     model=model, 
                     tokenizer=tokenizer, 
                     eos_token_id=tokenizer.eos_token_id, 
                     pad_token_id=tokenizer.eos_token_id,
+                    stopping_criteria=stopping_criteria,
                     **gen_parameters)
     
     if output_path is None:
@@ -158,6 +181,7 @@ def generate(
             print(f'\n\n### Answer: \n\n{answer}')
 
         elif mode == 'summarizer': 
+
             prev_answer = {}
             valid = False
             missing = {}
