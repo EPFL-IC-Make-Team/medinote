@@ -44,13 +44,14 @@ def save_file(df, path):
     '''
     Given a dataframe, save it to a .csv or .json or .jsonl file.
     '''
+    mode = 'a' if os.path.exists(path) else 'w'
     os.makedirs(os.path.dirname(path), exist_ok=True)
     if '.csv' in path:
-        df.to_csv(path, index=False)
+        df.to_csv(path, index=False, mode=mode)
     elif '.jsonl' in path:
-        df.to_json(path, orient='records', lines=True)
+        df.to_json(path, orient='records', lines=True, mode=mode)
     elif '.json' in path:
-        df.to_json(path, orient='records')
+        df.to_json(path, orient='records', mode=mode)
     else: 
         raise ValueError(f"Provided path {path} is not a .csv, .json or .jsonl file.")
     return df

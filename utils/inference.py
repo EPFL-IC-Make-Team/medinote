@@ -72,9 +72,10 @@ def generate(model_name,
 
     for i, row in tqdm(dataset.iterrows(), total=len(dataset), 
                        desc=f"Generating answers from {model_name}"):
+        print(f'\n\nPrompt: \n\n{row["prompt"]}')
         answer = pipe(row['prompt'])['generated_text']
         dataset.loc[i, 'pred'] = answer
-        print(f'\n\nAnswer: {answer}')
+        print(f'\n\nAnswer: \n\n{answer}')
         if i % 10 == 0: 
             save_file(dataset, output_path)
     save_file(dataset, output_path)
