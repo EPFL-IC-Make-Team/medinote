@@ -13,12 +13,28 @@ from transformers import pipeline
 from data import *
 
 PARAMETERS = {
+    'best_of': 1,
+    'presence_penalty': 0.0,
+    'frequency_penalty': 0.0,
+    'repetition_penalty': 1.0,
     'max_new_tokens': 1000,
-    'do_sample': True,
-    'top_k': 10,
+    'top_k': -1,
+    'top_p': 1.0,
+    'temperature': 0.0,
     'num_return_sequences': 2,
     'return_full_text': False
 }
+
+# best_of=1,
+#         presence_penalty=0.0,
+#         frequency_penalty=1.0,
+#         top_k=-1,
+#         top_p=1.0,
+#         temperature=temperature,
+#         stop=tokenizer.eos_token_id,
+#         use_beam_search=False,
+#         max_tokens=1024,
+#         logprobs=5
 
 # ----------------------- Running inference ----------------------- #
 
@@ -49,9 +65,6 @@ def generate(model_name,
         tokenizer = AutoTokenizer.from_pretrained(model_path, use_cache=False)
     except Exception as e:
         raise ValueError(f"Error when loading model and tokenizer from {model_path}:\n{e}")
-    
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
     model.eval()
 
     print(f"Loading data from {data_path}...")
@@ -74,14 +87,14 @@ def generate(model_name,
     for i, row in tqdm(dataset.iterrows(), total=len(dataset), 
                        desc=f"Generating answers from {model_name}"):
         print(f'\n\nPrompt: \n\n{row["prompt"]}')
-        answer = pipe(row['prompt'])['generated_text']
+        answer = pipe(row['prompt'])[0]['generated_text']
         dataset.loc[i, 'pred'] = answer
         print(f'\n\nAnswer: \n\n{answer}')
         if i % 10 == 0: 
-            save_file(dataset, output_path)
+            #save_file(dataset, output_path)
         if num_samples and i >= num_samples:
             break
-    save_file(dataset, output_path)
+    #save_file(dataset, output_path)
     return dataset
     
 
