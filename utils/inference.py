@@ -227,6 +227,7 @@ def infer(
     output_key = KV_PAIRS[mode]['output']
     if mode == 'generator' and use_gpt_summary:
         input_key = 'summary'
+        model_name += '-gpt'
     gen_parameters = PARAMETERS[mode]
 
     # Load generation pipeline
@@ -322,7 +323,7 @@ if __name__ == "__main__":
                         default='summarizer',
                         help='Mode of inference: summarizer, generator or direct')
     parser.add_argument('--use_gpt_summary', 
-                        type=bool,
+                        action='store_true',
                         default=False,
                         help='For generator mode only: whether to use GPT-4 summaries as input')
     args = parser.parse_args()
