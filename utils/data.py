@@ -11,8 +11,8 @@ import tiktoken
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-from chat import chat_gpt_4_turbo
-from generate import extract
+from utils.chat import chat_gpt_4_turbo
+from utils.generate import extract
 
 DATA_DIR = 'data'
 for folder in ['summaries', 'summarizer', 'generator', 'direct']:

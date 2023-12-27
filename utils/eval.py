@@ -14,9 +14,10 @@ between the two answers on a scale of 1 to 10. The higher the number the closer 
 
 '''
 
-from chat import *
-from inference import *
-from scorer import *
+from utils.chat import *
+from utils.inference import *
+from utils.scorer import *
+from utils.data import *
 
 import numpy as np
 import argparse
@@ -217,7 +218,7 @@ def get_counts_and_clean_dict(flattened_dict):
     counts['missing_keys_count'] = len(key_mismatches['missing_keys'])
     return counts, clean_flat_dict, key_mismatches
 
-def summary_statistics(golds, preds, score_types=['rouge', 'bleu', 'bert', 'gpt_score']):
+def summary_statistics(golds, preds, save_path, score_types=['rouge', 'bleu', 'bert', 'gpt_score']):
     '''
     Given several (gold,pred) patient summaries pairs, flatten and match keys, 
     then compute matching scores & counts.
@@ -235,15 +236,19 @@ def summary_statistics(golds, preds, score_types=['rouge', 'bleu', 'bert', 'gpt_
         raise ValueError("Gold and pred lists must be of same length.")
     
     if score_types == 'all' or 'gpt_rank' in score_types:
-        raise ValueError("GPT-4 ranking make no sense for summary evaluation. \
-                         Please choose between 'bleu', 'rouge', 'bert' and 'gpt_score'.")
-
+        raise ValueError("GPT-4 ranking makes no sense for summary evaluation. \
+                         Please choose in 'bleu', 'rouge', 'bert' and 'gpt_score'.")
+    
     # Flatten and match keys of each dict pair
     stats_df = pd.concat([golds, preds], axis=1)
+
+    print(f"Flattening summary dictionnaries and matching keys...")
     stats_df['flat_dicts'] = stats_df.apply(lambda row: flatten_dict(row['gold'], row['pred']), axis=1)
     stats_df.drop(['gold', 'pred'], axis=1, inplace=True)
 
     # Compute counts and clean each flattened dict
+
+    print(f"Computing counts and cleaning flattened dictionaries...")
     stats_df[['counts','cleaned_flat_dicts','key_mismatches']] = pd.DataFrame(
                         stats_df['flat_dicts'].apply(get_counts_and_clean_dict).tolist(),
                         columns=['counts', 'cleaned_flat_dicts', 'key_mismatches'])
@@ -288,7 +293,7 @@ def summary_statistics(golds, preds, score_types=['rouge', 'bleu', 'bert', 'gpt_
         
     return stats_df
 
-def summary_evaluation(path, score_types=['bleu', 'rouge', 'bert', 'gpt_score']): 
+def summary_evaluation(path, save_path = None,score_types=['bleu', 'rouge', 'bert', 'gpt_score']): 
     '''
     1 - Patient summary evaluation
     Run evaluation on a dataframe with 'gold' and 'pred' patient summaries. 
@@ -313,13 +318,16 @@ def summary_evaluation(path, score_types=['bleu', 'rouge', 'bert', 'gpt_score'])
     '''
 
     if score_types == 'all' or 'gpt_rank' in score_types:
-        raise ValueError("GPT-4 ranking make no sense for summary evaluation. \
-                         Please choose between 'bleu', 'rouge', 'bert' and 'gpt_score'.")
+        raise ValueError("GPT-4 ranking makes no sense for summary evaluation. \
+                         Please choose in 'bleu', 'rouge', 'bert' and 'gpt_score'.")
 
+    print(f"Running summary evaluation with score types: {score_types}")
+    print(f"Loading data...")
     dataset = load_file(path)
-
-    #save_file(dataset, scores_path)
-    stats = summary_statistics(dataset['gold'], dataset['pred'], score_types)
+    
+    if save_path is None:
+        save_path = path.replace('.jsonl', '_evaluation.jsonl')
+    stats = summary_statistics(dataset['gold'], dataset['pred'], score_types, save_path)
 
     if 'rouge' in score_types:
         score_types.remove('rouge')
