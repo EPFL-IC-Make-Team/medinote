@@ -13,6 +13,69 @@ from transformers import pipeline, StoppingCriteria, StoppingCriteriaList
 
 from data import *
 
+# ----------------------- Constants ----------------------- #
+
+KV_PAIRS = {
+    'summarizer': {
+        'input': 'conversation',
+        'output': 'pred_summary',
+    },
+    'generator': {
+        'input': 'pred_summary',
+        'output': 'pred_note',
+    },
+    'direct': {
+        'input': 'conversation',
+        'output': 'pred_direct',
+    }
+}
+
+INSTRUCTIONS = {
+    'summarizer': [
+        'Given the provided patient-doctor dialogue, write the corresponding patient information summary in JSON format.\nMake sure to extract all the information from the dialogue into the template, but do not add any new information. \nIf a field is not mentioned, simply write \"feature\": \"None\".',
+        ''
+    ],
+    'generator': [
+        'Given the provided JSON patient information summary, generate the corresponding clinical note as written by a physician.\nMake sure to use all the information from the dialogue into the note, but do not add any new information.',
+        'Now, generate the corresponding clinical note: '
+    ],
+    'direct': [
+        'Given the provided patient-doctor conversation, generate the corresponding clinical note as written by the physician. \nMake sure to use all the information from the dialogue into the note, but do not add any new information.',
+        'Now, generate the corresponding clinical note: '
+    ]
+}
+
+PARAMETERS = {
+    'summarizer' : {
+        'max_length': 2048,
+        'do_sample': True,
+        'num_beams': 1,
+        'top_p': 0.95,
+        'num_return_sequences': 1,
+        'return_full_text': False,
+        'max_time': 300,
+    },
+    'generator' : {
+        'max_length': 2048, 
+        'do_sample': True,
+        'num_beams': 1,
+        'top_p': 0.95,
+        'num_return_sequences': 1,
+        'return_full_text': False
+    },
+    'direct' : {
+        'max_length': 2048,
+        'do_sample': True,
+        'num_beams': 1,
+        'top_p': 0.95,
+        'num_return_sequences': 1,
+        'return_full_text': False
+    }
+}
+
+
+# ----------------------- Summarizer inference utilities ----------------------- #
+
 class StoppingCriteriaSub(StoppingCriteria):
 
     def __init__(self, stops = []):
@@ -22,27 +85,6 @@ class StoppingCriteriaSub(StoppingCriteria):
       self.stops = stops
       for i in range(len(stops)):
         self.stops = self.stops[i]
-
-
-SUMMARIZER_PARAMETERS = {
-    'max_length': 2048,
-    'do_sample': True,
-    'num_beams': 1,
-    'top_p': 0.95,
-    'num_return_sequences': 1,
-    'return_full_text': False,
-    'max_time': 300,
-}
-
-GENERATOR_PARAMETERS = {
-    'max_length': 2048, 
-    'do_sample': True,
-    'top_k': 10,
-    'num_return_sequences': 1,
-    'return_full_text': False
-}
-
-# ----------------------- Summarizer inference utilities ----------------------- #
 
 def load_template(template_path):
     '''
@@ -79,38 +121,44 @@ def check_summary(answer, prev_answer, template_path):
     Given the (potentially partial) model output, check whether all fields are filled. 
     Otherwise, outputs the features that are missing. 
     '''
+    # Load patient summary template
     if not os.path.exists(template_path):
         raise FileNotFoundError(f'Template not found at {template_path}.')
     with open(template_path) as f:
         template = json.load(f)
 
+    # Convert answer to a complete JSON dictionary
     answer = complete_json(answer)
     if answer is None:
-        print('COULD NOT PARSE ANSWER')
         return False, template, prev_answer
     
+    # Merge with existing answer
     for key in answer.keys():
         if key not in prev_answer.keys():
             prev_answer[key] = answer[key]
-    
-    print(f'\n\n### NEW ANSWER:\n\n{prev_answer}\n\n')
 
+    # Check if all fields are filled
     missing = {key: template[key] for key in template.keys() if key not in prev_answer.keys()}
     valid = (len(missing) == 0)
     return valid, missing, prev_answer
 
 
-# ----------------------- Running inference ----------------------- #
+# ----------------------- Inference pipeline ----------------------- #
     
 
-def generate_summary(row, pipe, template_path): 
-    prev_answer = {}
+def infer_summary(dialog, pipe, template_path, max_tries=3): 
+    '''
+    Generates a patient summary from a patient-doctor conversation.
+    If the generated summary is incomplete, query the model again with the missing fields.
+    '''
+    current_answer = {}
     valid = False
     missing = {}
-    while not valid:
+
+    while not valid and max_tries > 0:
         if missing == {}:
             starter = '{\n"visit motivation": "'
-            prompt = row['prompt'] \
+            prompt = dialog \
                 + '\n\nNow, generate the full patient summary: \n\n' \
                 + starter
         else: 
@@ -118,35 +166,30 @@ def generate_summary(row, pipe, template_path):
             if missing != {}:
                 starter += f'\n"{list(missing.keys())[0]}": "'
 
-            prompt = row['prompt'] \
-                + '\n\nNow, you will fill in the following template: \n\n' \
+            prompt = dialog \
+                + '\n\nNow, fill in the following template: \n\n' \
                 + formatting(json.dumps(missing, indent=4)) \
                 + '\n\n' + starter
             
         print(f'\n\n### PROMPT:\n\n{prompt}')
         partial_answer = starter + pipe(prompt)[0]['generated_text']
         limiter = re.search(r'}\s*}', partial_answer)
-        if limiter:
-            partial_answer = partial_answer[:limiter.end()]
-        print(f'\n\n### PARTIAL ANSWER:\n\n{partial_answer}\n\n')
-
-        valid, missing, prev_answer = check_summary(partial_answer, prev_answer, template_path)
-        print('\n\n\nCHECKING SUMMARY')
-        print(f'\n\n### VALID: {valid}')
-        print(f'\n\n### MISSING {len(missing)} features:\n\n{missing} \n\n')
-    answer = prev_answer
-    print(f'\n\nFINAL ANSWER: \n\n{answer}')
+        if limiter: partial_answer = partial_answer[:limiter.end()]
+        valid, missing, current_answer = check_summary(partial_answer, current_answer, template_path)
+        max_tries -= 1
+    answer = json.dumps(current_answer, indent=4)
     return answer
 
 
-def generate(
+def infer(
         model_name,
         model_path, 
-        data_path,
+        input_path=None,
         output_path=None, 
         num_samples=None, 
         mode='summarizer',
-        template_path=None):
+        template_path=None,
+        use_gpt_summary=False):
     '''
     Loads a model and generates clinical notes. 
     Can be used for either 
@@ -156,13 +199,15 @@ def generate(
     Arguments: 
         - model_name: Name of the model to be loaded.
         - model_path: Path to the model.
-        - data_path: Path to the data file with dialog or patient summaries. 
+        - input_path: Path to the data file with dialog or patient summaries. 
         - output_path: Path to the output file with generated notes
         - num_samples: Number of samples to generate (default: None --> all)
         - mode: 'summarizer' or 'generator'
         - template_path: Path to the template file (.json), only for summarizer mode
-
+        - use_gpt_summary: Whether to use GPT-4 summaries as input, only for generator mode
     '''
+
+    # Load model
     print(f"Loading model {model_name} from {model_path}...")
     if not os.path.exists(model_path):
         raise FileNotFoundError(f'Model not found at {model_path}.')
@@ -174,56 +219,77 @@ def generate(
         raise ValueError(f"Error when loading model and tokenizer from {model_path}:\n{e}")
     model.eval()
 
-    print(f"\nLoading data from {data_path}...")
-    dataset = load_file(data_path)
-    dataset['model_name'] = model_name
-    dataset['pred'] = ''
+    # Load parameters
+    if mode not in ['summarizer', 'generator', 'direct']:
+        raise ValueError(f"Invalid mode {mode}. Must be 'summarizer', 'generator' or 'direct'.")
+    instructions = INSTRUCTIONS[mode]
+    input_key = KV_PAIRS[mode]['input']
+    output_key = KV_PAIRS[mode]['output']
+    if mode == 'generator' and use_gpt_summary:
+        input_key = 'summary'
+    gen_parameters = PARAMETERS[mode]
 
+    # Load generation pipeline
     print(f"\nInitalizing pipeline...")
+    stopping_criteria = None
     if mode == 'summarizer':
-        gen_parameters = SUMMARIZER_PARAMETERS
         if template_path is None:
             raise ValueError(f"Template path must be specified for summarizer mode.")
         stoppers = ['visit motivation']
         stops = tokenizer(stoppers, add_special_tokens=False)['input_ids']
         stopping_criteria = StoppingCriteriaList([StoppingCriteriaSub(stops=stops)])
-    elif mode == 'generator':
-        gen_parameters = GENERATOR_PARAMETERS
-        stopping_criteria = None
-    else:
-        raise ValueError(f"Invalid mode {mode}. Must be 'summarizer' or 'generator'.")
     pipe = pipeline("text-generation", 
-                    model=model, 
-                    tokenizer=tokenizer, 
-                    eos_token_id=tokenizer.eos_token_id, 
-                    pad_token_id=tokenizer.eos_token_id,
-                    stopping_criteria=stopping_criteria,
-                    **gen_parameters)
+                            model=model, 
+                            tokenizer=tokenizer, 
+                            eos_token_id=tokenizer.eos_token_id, 
+                            pad_token_id=tokenizer.eos_token_id,
+                            stopping_criteria=stopping_criteria,
+                            **gen_parameters)
     
-    if output_path is None:
-        output_path = data_path.replace('.jsonl', f'-{model_name}.jsonl')
+    # Load data
+    if input_path: 
+        print(f"\nLoading input file from {input_path}...")
+        data_df = load_file(input_path)
+        if output_key not in gen_df.columns:
+            gen_df[output_key] = None
+    elif not output_path: 
+        raise ValueError(f"Input path must be specified if output path is not.")
 
-    for i, row in tqdm(dataset.iterrows(), total=len(dataset), 
+    # Load output file
+    print(f"Loading output file from {output_path}...")
+    idx_done = []
+    if os.path.exists(output_path):
+        gen_df = load_file(output_path)
+        idx_done = gen_df['idx'].tolist()
+        print(f"Output file already exists at {output_path}. {len(idx_done)} samples already generated.")
+    else:
+        gen_df = data_df.copy()
+        gen_df[output_key] = None
+        gen_df['model_name'] = model_name
+
+    # Generate samples
+    for i, row in tqdm(gen_df.iterrows(), 
+                       total=len(gen_df), 
                        desc=f"Generating answers from {model_name}"):
-        
-        if mode == 'generator':
-            prompt = row['prompt'] + '\nNow, generate the corresponding clinical note: \n\n'
-            print(f'\n\n### Prompt:\n\n{prompt}')
-            answer = pipe(row['prompt'])[0]['generated_text']
-            print(f'\n\n### Answer: \n\n{answer}')
+        if i in idx_done:
+            continue
+        query = instructions[0] + '\n\n' + row[input_key] + '\n\n' + instructions[1]
 
-        elif mode == 'summarizer': 
-            answer = generate_summary(row, pipe, template_path)
-            answer = json.dumps(answer)
-            print(f'\n\n### Answer: \n\n{answer}')
+        if mode == 'generator' or mode == 'direct':
+            print(f'\n\n### PROMPT:\n\n{query}')
+            answer = pipe(query)[0]['generated_text']
+        else:
+            answer = infer_summary(row[input_key], pipe, template_path)
+        print(f'\n\n### ANSWER: \n\n{answer}')
         
-        dataset.at[i, 'pred'] = answer
-        #if i % 10 == 0: 
-            #save_file(dataset, output_path)
+        gen_df.at[i, output_key] = answer
+        gen_df.at[i, 'model_name'] = model_name
+        if i % 10 == 0: 
+            save_file(gen_df, output_path)
         if num_samples and i >= num_samples:
             break
-    #save_file(dataset, output_path)
-    return dataset
+    save_file(gen_df, output_path)
+    return gen_df
     
 
 if __name__ == "__main__":
@@ -236,26 +302,28 @@ if __name__ == "__main__":
                         type=str, 
                         default='/pure-mlo-scratch/make_project/trial-runs/meditron-7b-summarizer/hf_checkpoint/', 
                         help='Path to the model.')
-    parser.add_argument('--data_path', 
+    parser.add_argument('--input_path', 
                         type=str, 
-                        default='data/direct_train.jsonl',
-                        help='Path to the data file with dialog or patient summaries.')
+                        default=None,
+                        help='Path to the data file.')
     parser.add_argument('--output_path', 
                         type=str, 
-                        default=None, 
-                        help='Path to the output file with generated notes. If None, saved to directory of data_path.')
+                        help='Path to the output file with generated notes. ')
     parser.add_argument('--num_samples',
                         type=int,
                         default=None,
                         help='Number of samples to generate')
-    parser.add_argument('--mode',
-                        type=str,
-                        default='summarizer',
-                        help='Mode of inference: summarizer or generator')
     parser.add_argument('--template_path',
                         type=str,
                         default='data/template.json',
-                        help='Path to the template file (.json), only for summarizer mode')
+                        help='For summarizer mode only: path to the patient summary template')
+    parser.add_argument('--mode',
+                        type=str,
+                        default='summarizer',
+                        help='Mode of inference: summarizer, generator or direct')
+    parser.add_argument('--use_gpt_summary', 
+                        type=bool,
+                        default=False,
+                        help='For generator mode only: whether to use GPT-4 summaries as input')
     args = parser.parse_args()
-    generate(args.model_name, args.model_path, args.data_path, 
-             args.output_path, args.num_samples, args.mode, args.template_path)
+    infer(**vars(args))
