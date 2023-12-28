@@ -25,7 +25,7 @@ fi
 if [ "$1" == "meditron-7b-direct"  ] || [  "$1" == "all" ]; then
     python3 utils/inference.py \
         --model_name meditron-7b-direct \
-        --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-7b-generator/hf_checkpoint/ \
+        --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-7b-direct/hf_checkpoint/ \
         --input_path /pure-mlo-scratch/make_project/data/raw/summaries_full_test.jsonl \
         --output_path /pure-mlo-scratch/make_project/data/inference/generation.jsonl \
         --num_samples 1000 \
@@ -56,7 +56,7 @@ fi
 if [ "$1" == "meditron-13b-direct"  ] || [  "$1" == "all" ]; then
     python3 utils/inference.py \
         --model_name meditron-13b-direct \
-        --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-13b-generator/hf_checkpoint/ \
+        --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-13b-direct/hf_checkpoint/ \
         --input_path /pure-mlo-scratch/make_project/data/raw/summaries_full_test.jsonl \
         --output_path /pure-mlo-scratch/make_project/data/inference/generation.jsonl \
         --num_samples 1000 \

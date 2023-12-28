@@ -165,13 +165,14 @@ def infer_summary(dialogue,
         if missing == {}:
             starter = '{\n"visit motivation":'
             prompt = instructions[0] + '\n\n' + dialogue + '\n\n' + instructions[1] + '\n\n' + starter
+            if verbose: print(f'\n\n### PROMPT:\n\n{prompt}')
         else: 
             starter = '{\n"' + f'{list(missing.keys())[0]}":'
-            prompt = instructions[0] + '\n\n' + dialogue \
-                + '\n\nNow, fill in the following template: \n\n' \
+            prompt_end = '\n\nNow, fill in the following template: \n\n' \
                 + formatting(json.dumps(missing, indent=4)) \
                 + '\n\n' + starter
-        if verbose: print(f'\n\n### PROMPT:\n\n{prompt}')
+            if verbose: print(f'\n\n### PROMPT:\n\n{prompt_end}')
+            prompt = instructions[0] + '\n\n' + dialogue + prompt_end
         partial_answer = starter + pipe(prompt)[0]['generated_text'].strip()
         limiter = re.search(r'}\s*}', partial_answer)
         if limiter: partial_answer = partial_answer[:limiter.end()].strip()
