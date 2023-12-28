@@ -107,8 +107,10 @@ def complete_json(text):
     Format a (potentially partial) JSON string. 
     Removes the last character until the string is valid.
     '''
-    json_string = text
+    json_string = text.replace('\n', '')
+    num_tries = 0
     while True:
+        num_tries += 1
         if not json_string:
             return None
         try:
@@ -117,6 +119,7 @@ def complete_json(text):
             json_string = json_string[:-1]
             continue
         break
+    print(f'JSON string completed in {num_tries} tries.')
     return data
 
 def check_summary(answer, prev_answer, template): 
