@@ -232,6 +232,7 @@ def infer(
     output_key = KV_PAIRS[mode]['output']
     if mode == 'generator' and use_gpt_summary:
         input_key = 'summary'
+        output_key = 'pred_note-gpt'
         model_name += '-gpt'
     gen_parameters = PARAMETERS[mode]
     print(f"\n\n### PARAMETERS:\n\nInstruction 1: {instructions[0]}\nInstruction 2: {instructions[1]}\nInput key: {input_key}\nOutput key: {output_key}\nParameters: {gen_parameters}")
