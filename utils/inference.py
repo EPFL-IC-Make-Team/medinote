@@ -260,11 +260,9 @@ def infer(
         raise ValueError(f"Input path must be specified if output path is not.")
 
     # Load output file
-    idx_done = []
     if os.path.exists(output_path):
         print(f"Loading output file from {output_path}...")
         gen_df = load_file(output_path)
-        idx_done = gen_df[gen_df[output_key].notnull()]['idx'].tolist()
         print(f"Output file already exists at {output_path}. {len(idx_done)} samples already generated.")
     else:
         print(f"Initializing output file at {output_path}...")
@@ -273,13 +271,19 @@ def infer(
             gen_df['idx'] = gen_df.index
         gen_df[output_key] = None
         gen_df['model_name'] = model_name
+    
+    # Check which samples to generate
+    idx_done = gen_df[gen_df[output_key].notnull()]['idx'].tolist()
+    idx_todo = [i for i in gen_df.index if i not in idx_done]
+    if mode == 'generator' and not use_gpt_summary:
+        idx_todo = [i for i in idx_todo if gen_df.loc[i]['summary'] is not None]
+        print(f"Using {len(idx_todo)} generated summaries as input.")
+        if len(idx_todo) == 0:
+            raise ValueError(f'No patient summaries found in {input_path}.')
 
     # Generate samples
-    for i, row in tqdm(gen_df.iterrows(), 
-                       total=len(gen_df), 
-                       desc=f"Generating answers from {model_name}"):
-        if i in idx_done:
-            continue
+    for i in tqdm(idx_todo, desc='Generating samples'):
+        row = gen_df.loc[i]
 
         if mode == 'generator' or mode == 'direct':
             query = instructions[0] + '\n\n' + row[input_key] + '\n\n' + instructions[1]
