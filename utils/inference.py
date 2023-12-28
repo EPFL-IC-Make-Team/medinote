@@ -162,13 +162,13 @@ def infer_summary(dialog, pipe, template_path, instructions, max_tries=3):
     while not valid and max_tries > 0:
         if missing == {}:
             starter = '{\n"visit motivation": "'
-            prompt = instructions[0] + dialog + '\n\n' + instructions[1] + '\n\n' + starter
+            prompt = instructions[0] + '\n\n' + dialog + '\n\n' + instructions[1] + '\n\n' + starter
         else: 
             starter = '{'
             if missing != {}:
                 starter += f'\n"{list(missing.keys())[0]}": "'
 
-            prompt = instructions[0] + dialog \
+            prompt = instructions[0] + '\n\n' + dialog \
                 + '\n\nNow, fill in the following template: \n\n' \
                 + formatting(json.dumps(missing, indent=4)) \
                 + '\n\n' + starter
@@ -284,7 +284,7 @@ def infer(
 
         elif mode == 'summarizer':
             answer = infer_summary(row[input_key], pipe, template_path, instructions)
-            
+
         print(f'\n\n### ANSWER: \n\n{answer}')
         
         gen_df.at[i, output_key] = answer
