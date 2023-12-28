@@ -108,9 +108,7 @@ def complete_json(text):
     Removes the last character until the string is valid.
     '''
     json_string = text.replace('\n', '')
-    num_tries = 0
     while True:
-        num_tries += 1
         if not json_string:
             return None
         try:
@@ -119,7 +117,6 @@ def complete_json(text):
             json_string = json_string[:-1]
             continue
         break
-    print(f'JSON string completed in {num_tries} tries.')
     return data
 
 def check_summary(answer, prev_answer, template): 
@@ -134,6 +131,7 @@ def check_summary(answer, prev_answer, template):
     answer = complete_json(answer)
     if answer is None:
         return False, template, prev_answer
+    print(f'\n\n### PARTIAL ANSWER: \n\n{json.dumps(answer, indent=4)}')
     
     # Merge with existing answer
     for key in answer.keys():
@@ -262,6 +260,8 @@ def infer(
     elif not output_path: 
         raise ValueError(f"Input path must be specified if output path is not.")
     print('Dataset columns: ', data_df.columns)
+    if input_key not in data_df.columns:
+        raise ValueError(f'Input key {input_key} not found in dataset.')
 
     # Load output file
     if os.path.exists(output_path):
@@ -274,17 +274,13 @@ def infer(
         gen_df['model_name'] = model_name
     
     # Check which samples to generate
-    idx_done = gen_df[gen_df[output_key].notnull()]['idx'].tolist()
-    idx_todo = [i for i in gen_df.index if i not in idx_done]
-    if mode == 'generator' and not use_gpt_summary:
-        if 'pred_summary' not in gen_df.columns:
-            raise ValueError(f'No patient summaries found in {input_path}.')
-        idx_todo = [i for i in idx_todo if gen_df.loc[i]['pred_summary'] is not None]
-        print(f"Found {len(idx_todo)} generated summaries.")
-        if len(idx_todo) == 0:
-            raise ValueError(f'No patient summaries found in {input_path}.')
+    idx_todo = gen_df.index.tolist()
     if num_samples and len(idx_todo) > num_samples:
         idx_todo = idx_todo[:num_samples]
+    idx_done = gen_df[gen_df[output_key].notnull()]['idx'].tolist()
+    idx_todo = [i for i in idx_todo if i not in idx_done and gen_df.loc[i][input_key] is not None]
+    if len(idx_todo) == 0:
+        raise ValueError(f'No samples to generate in {input_path}.')
 
     # Generate samples
     for i in tqdm(idx_todo, desc='Generating samples'):
