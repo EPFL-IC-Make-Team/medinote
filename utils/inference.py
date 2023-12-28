@@ -210,9 +210,9 @@ def infer(
         - template_path: Path to the template file (.json), only for summarizer mode
         - use_gpt_summary: Whether to use GPT-4 summaries as input, only for generator mode
     '''
-    print(f"\n\n### INFERENCE: {model_name} ###\n\n")
+    print(f"\n\n# ----- INFERENCE: mode = {mode}, model = {model_name} ----- #\n\n")
     # Load model
-    print(f"Loading model {model_name} from {model_path}...")
+    print(f"Loading model from {model_path}...")
     if not os.path.exists(model_path):
         raise FileNotFoundError(f'Model not found at {model_path}.')
     try:
@@ -224,6 +224,7 @@ def infer(
     model.eval()
 
     # Load parameters
+    print(f"\n\n# ----- PARAMETERS ----- #\n\n")
     if mode not in ['summarizer', 'generator', 'direct']:
         raise ValueError(f"Invalid mode {mode}. Must be 'summarizer', 'generator' or 'direct'.")
     instructions = INSTRUCTIONS[mode]
@@ -233,6 +234,11 @@ def infer(
         input_key = 'summary'
         model_name += '-gpt'
     gen_parameters = PARAMETERS[mode]
+    print(f"\nInstruction 1: {instructions[0]}")
+    print(f"\nInstruction 2: {instructions[1]}")
+    print(f"\nInput key: {input_key}")
+    print(f"\nOutput key: {output_key}")
+    print(f"\nParameters: {gen_parameters}")
 
     # Load generation pipeline
     print(f"\nInitalizing pipeline...")
@@ -259,13 +265,14 @@ def infer(
         raise ValueError(f"Input path must be specified if output path is not.")
 
     # Load output file
-    print(f"Loading output file from {output_path}...")
     idx_done = []
     if os.path.exists(output_path):
+        print(f"Loading output file from {output_path}...")
         gen_df = load_file(output_path)
         idx_done = gen_df['idx'].tolist()
         print(f"Output file already exists at {output_path}. {len(idx_done)} samples already generated.")
     else:
+        print(f"Initializing output file at {output_path}...")
         gen_df = data_df.copy()
         gen_df[output_key] = None
         gen_df['model_name'] = model_name
