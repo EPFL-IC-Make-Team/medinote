@@ -177,6 +177,7 @@ def infer_summary(dialog, pipe, template_path, instructions, max_tries=3):
         partial_answer = starter + pipe(prompt)[0]['generated_text']
         limiter = re.search(r'}\s*}', partial_answer)
         if limiter: partial_answer = partial_answer[:limiter.end()]
+        print(f'\n\n### PARTIAL ANSWER:\n\n{partial_answer}')
         valid, missing, current_answer = check_summary(partial_answer, current_answer, template_path)
         max_tries -= 1
     answer = json.dumps(current_answer, indent=4)
