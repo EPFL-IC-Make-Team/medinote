@@ -44,11 +44,10 @@ def load_file(path):
         raise ValueError(f"Provided path {path} is not a valid file.")
     return data
 
-def save_file(df, path):
+def save_file(df, path, mode='w'):
     '''
     Given a dataframe, save it to a .csv or .json or .jsonl file.
     '''
-    mode = 'a' if os.path.exists(path) else 'w'
     os.makedirs(os.path.dirname(path), exist_ok=True)
     if '.csv' in path:
         df.to_csv(path, index=False, mode=mode)

@@ -302,7 +302,7 @@ def infer(
         
         gen_df.at[i, output_key] = answer
         gen_df.at[i, 'model_name'] = model_name
-        save_file(gen_df, output_path)
+        save_file(gen_df, output_path, mode='w')
     return gen_df
     
 
