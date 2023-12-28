@@ -62,16 +62,22 @@ python utils/data.py
 Running inference is done as follows:
 
 ```bash
-python utils/inference.py \
+python3 utils/inference.py \
     --model_name meditron-7b-summarizer \
-    --model_path /path/to/model/hf_checkpoint/ \
-    --data_path /path/to/data.jsonl \
-    --output_path data/summaries.jsonl
-
-python3 utils/inference.py --model_name meditron-7b-summarizer --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-7b-summarizer/hf_checkpoint/ --data_path /pure-mlo-scratch/make_project/data/raw/summarizer_test.jsonl --output_path /pure-mlo-scratch/make_project/data/inference/meditron-7b-summarizer.jsonl
+    --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-7b-summarizer/hf_checkpoint/ \
+    --input_path /pure-mlo-scratch/make_project/data/inference/summaries_30K.jsonl \
+    --output_path /pure-mlo-scratch/make_project/data/inference/generation.jsonl \
+    --num_samples 1000 \
+    --mode summarizer \
+    --template_path /pure-mlo-scratch/make_project/ClinicalNotes/generation/templates/template.json \
 ```
 
-Evaluating patient summaries is done as follows:
+Alternatively, you can run the full inference for all models using `infer.sh`: 
+
+```bash
+./infer.sh
+```
+Once inference is done, you can evaluate generated patient summaries as follows: 
 
 ```bash
 python utils/eval.py \

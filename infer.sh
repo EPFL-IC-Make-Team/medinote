@@ -4,7 +4,7 @@
 python3 utils/inference.py \
     --model_name meditron-7b-summarizer \
     --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-7b-summarizer/hf_checkpoint/ \
-    --input_path /pure-mlo-scratch/make_project/data/inference/summaries_30K.jsonl \
+    --input_path /pure-mlo-scratch/make_project/data/inference/summaries_30K.jsonl \
     --output_path /pure-mlo-scratch/make_project/data/inference/generation.jsonl \
     --num_samples 1000 \
     --mode summarizer \
@@ -23,7 +23,7 @@ python3 utils/inference.py \
 python3 utils/inference.py \
     --model_name meditron-7b-generator \
     --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-7b-generator/hf_checkpoint/ \
-    --input_path /pure-mlo-scratch/make_project/data/inference/summaries_30K.jsonl \
+    --input_path /pure-mlo-scratch/make_project/data/inference/summaries_30K.jsonl \
     --output_path /pure-mlo-scratch/make_project/data/inference/generation.jsonl \
     --num_samples 1000 \
     --mode generator 
@@ -32,7 +32,7 @@ python3 utils/inference.py \
 python3 utils/inference.py \
     --model_name meditron-7b-direct \
     --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-7b-generator/hf_checkpoint/ \
-    --input_path /pure-mlo-scratch/make_project/data/inference/summaries_30K.jsonl \
+    --input_path /pure-mlo-scratch/make_project/data/inference/summaries_30K.jsonl \
     --output_path /pure-mlo-scratch/make_project/data/inference/generation.jsonl \
     --num_samples 1000 \
     --mode direct 
@@ -41,7 +41,7 @@ python3 utils/inference.py \
 python3 utils/inference.py \
     --model_name meditron-13b-summarizer \
     --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-13b-summarizer/hf_checkpoint/ \
-    --input_path /pure-mlo-scratch/make_project/data/inference/summaries_30K.jsonl \
+    --input_path /pure-mlo-scratch/make_project/data/inference/summaries_30K.jsonl \
     --output_path /pure-mlo-scratch/make_project/data/inference/generation.jsonl \
     --num_samples 1000 \
     --mode summarizer \
@@ -60,7 +60,7 @@ python3 utils/inference.py \
 python3 utils/inference.py \
     --model_name meditron-13b-generator \
     --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-13b-generator/hf_checkpoint/ \
-    --input_path /pure-mlo-scratch/make_project/data/inference/summaries_30K.jsonl \
+    --input_path /pure-mlo-scratch/make_project/data/inference/summaries_30K.jsonl \
     --output_path /pure-mlo-scratch/make_project/data/inference/generation.jsonl \
     --num_samples 1000 \
     --mode generator
@@ -69,7 +69,7 @@ python3 utils/inference.py \
 python3 utils/inference.py \
     --model_name meditron-13b-direct \
     --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-13b-generator/hf_checkpoint/ \
-    --input_path /pure-mlo-scratch/make_project/data/inference/summaries_30K.jsonl \
+    --input_path /pure-mlo-scratch/make_project/data/inference/summaries_30K.jsonl \
     --output_path /pure-mlo-scratch/make_project/data/inference/generation.jsonl \
     --num_samples 1000 \
     --mode direct
