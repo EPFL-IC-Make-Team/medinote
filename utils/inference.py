@@ -37,7 +37,7 @@ KV_PAIRS = {
 INSTRUCTIONS = {
     'summarizer': [
         'Given the provided patient-doctor dialogue, write the corresponding patient information summary in JSON format.\nMake sure to extract all the information from the dialogue into the template, but do not add any new information. \nIf a field is not mentioned, simply write \"feature\": \"None\".',
-        ''
+        'Now, generate the full patient summary: '
     ],
     'generator': [
         'Given the provided JSON patient information summary, generate the corresponding clinical note as written by a physician.\nMake sure to use all the information from the dialogue into the note, but do not add any new information.',
@@ -150,7 +150,7 @@ def check_summary(answer, prev_answer, template_path):
 # ----------------------- Inference pipeline ----------------------- #
     
 
-def infer_summary(dialog, pipe, template_path, max_tries=3): 
+def infer_summary(dialog, pipe, template_path, instructions, max_tries=3): 
     '''
     Generates a patient summary from a patient-doctor conversation.
     If the generated summary is incomplete, query the model again with the missing fields.
@@ -162,15 +162,13 @@ def infer_summary(dialog, pipe, template_path, max_tries=3):
     while not valid and max_tries > 0:
         if missing == {}:
             starter = '{\n"visit motivation": "'
-            prompt = dialog \
-                + '\n\nNow, generate the full patient summary: \n\n' \
-                + starter
+            prompt = instructions[0] + dialog + '\n\n' + instructions[1] + '\n\n' + starter
         else: 
             starter = '{'
             if missing != {}:
                 starter += f'\n"{list(missing.keys())[0]}": "'
 
-            prompt = dialog \
+            prompt = instructions[0] + dialog \
                 + '\n\nNow, fill in the following template: \n\n' \
                 + formatting(json.dumps(missing, indent=4)) \
                 + '\n\n' + starter
@@ -224,7 +222,6 @@ def infer(
     model.eval()
 
     # Load parameters
-    print(f"\n\n# ----- PARAMETERS ----- #\n\n")
     if mode not in ['summarizer', 'generator', 'direct']:
         raise ValueError(f"Invalid mode {mode}. Must be 'summarizer', 'generator' or 'direct'.")
     instructions = INSTRUCTIONS[mode]
@@ -234,11 +231,7 @@ def infer(
         input_key = 'summary'
         model_name += '-gpt'
     gen_parameters = PARAMETERS[mode]
-    print(f"\nInstruction 1: {instructions[0]}")
-    print(f"\nInstruction 2: {instructions[1]}")
-    print(f"\nInput key: {input_key}")
-    print(f"\nOutput key: {output_key}")
-    print(f"\nParameters: {gen_parameters}")
+    print(f"\n\n### PARAMETERS:\n\nInstruction 1: {instructions[0]}\nInstruction 2: {instructions[1]}\nInput key: {input_key}\nOutput key: {output_key}\nParameters: {gen_parameters}")
 
     # Load generation pipeline
     print(f"\nInitalizing pipeline...")
@@ -269,15 +262,13 @@ def infer(
     if os.path.exists(output_path):
         print(f"Loading output file from {output_path}...")
         gen_df = load_file(output_path)
-        idx_done = gen_df['idx'].tolist()
+        idx_done = gen_df[gen_df[output_key].notnull()]['idx'].tolist()
         print(f"Output file already exists at {output_path}. {len(idx_done)} samples already generated.")
     else:
         print(f"Initializing output file at {output_path}...")
         gen_df = data_df.copy()
         gen_df[output_key] = None
         gen_df['model_name'] = model_name
-        gen_df[output_key] = None
-
 
     # Generate samples
     for i, row in tqdm(gen_df.iterrows(), 
@@ -285,13 +276,15 @@ def infer(
                        desc=f"Generating answers from {model_name}"):
         if i in idx_done:
             continue
-        query = instructions[0] + '\n\n' + row[input_key] + '\n\n' + instructions[1]
 
         if mode == 'generator' or mode == 'direct':
+            query = instructions[0] + '\n\n' + row[input_key] + '\n\n' + instructions[1]
             print(f'\n\n### PROMPT:\n\n{query}')
             answer = pipe(query)[0]['generated_text']
-        else:
-            answer = infer_summary(row[input_key], pipe, template_path)
+
+        elif mode == 'summarizer':
+            answer = infer_summary(row[input_key], pipe, template_path, instructions)
+            
         print(f'\n\n### ANSWER: \n\n{answer}')
         
         gen_df.at[i, output_key] = answer
