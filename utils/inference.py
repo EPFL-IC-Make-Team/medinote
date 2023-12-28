@@ -251,16 +251,7 @@ def infer(
                             stopping_criteria=stopping_criteria,
                             **gen_parameters)
     
-    # Load data
-    if input_path: 
-        print(f"\nLoading input file from {input_path}...")
-        data_df = load_file(input_path)
-        if output_key not in gen_df.columns:
-            gen_df[output_key] = None
-    elif not output_path: 
-        raise ValueError(f"Input path must be specified if output path is not.")
-
-    # Load output file
+     # Load output file
     print(f"Loading output file from {output_path}...")
     idx_done = []
     if os.path.exists(output_path):
@@ -271,6 +262,14 @@ def infer(
         gen_df = data_df.copy()
         gen_df[output_key] = None
         gen_df['model_name'] = model_name
+        gen_df[output_key] = None
+
+    # Load data
+    if input_path: 
+        print(f"\nLoading input file from {input_path}...")
+        data_df = load_file(input_path)
+    elif not output_path: 
+        raise ValueError(f"Input path must be specified if output path is not.")
 
     # Generate samples
     for i, row in tqdm(gen_df.iterrows(), 
