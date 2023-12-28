@@ -206,7 +206,7 @@ def infer(
         - template_path: Path to the template file (.json), only for summarizer mode
         - use_gpt_summary: Whether to use GPT-4 summaries as input, only for generator mode
     '''
-
+    print(f"\n\n### INFERENCE: {model_name} ###\n\n")
     # Load model
     print(f"Loading model {model_name} from {model_path}...")
     if not os.path.exists(model_path):
