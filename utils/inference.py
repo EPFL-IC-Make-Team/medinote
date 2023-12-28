@@ -256,6 +256,8 @@ def infer(
     if output_path and os.path.exists(output_path):
         print(f"Loading output file from {output_path}...")
         gen_df = load_file(output_path)
+        if output_key not in gen_df.columns:
+            gen_df[output_key] = None
     elif input_path and os.path.exists(input_path):
         print(f"\nLoading input file from {input_path}...")
         data_df = load_file(input_path)
@@ -263,7 +265,6 @@ def infer(
             data_df['idx'] = data_df.index
         print(f"Initializing output file at {output_path}...")
         gen_df = data_df.copy()
-        gen_df[output_key] = None
         gen_df['model_name'] = model_name
     elif input_path:
         raise FileNotFoundError(f'Input file not found at {input_path}.')
