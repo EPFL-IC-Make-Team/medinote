@@ -277,9 +277,12 @@ def infer(
     if num_samples and len(idx_todo) > num_samples:
         idx_todo = idx_todo[:num_samples]
     idx_done = gen_df[gen_df[output_key].notnull()]['idx'].tolist()
-    idx_todo = [i for i in idx_todo if i not in idx_done and gen_df.loc[i][input_key] is not None]
+    idx_todo = [i for i in idx_todo if i not in idx_done]
     if len(idx_todo) == 0:
-        raise ValueError(f'No samples to generate in {input_path}.')
+        raise ValueError(f'All samples already generated in {input_path}.')
+    idx_todo = [i for i in idx_todo if gen_df.loc[i][input_key] is not None]
+    if len(idx_todo) == 0:
+        raise ValueError(f'No samples with input key {input_key} to generate in {input_path}.')
 
     # Generate samples
     for i in tqdm(idx_todo, desc='Generating samples'):
