@@ -271,6 +271,7 @@ def infer(
     print('Output file columns: ', list(gen_df.columns))
     if input_key not in gen_df.columns:
         raise ValueError(f'Input key {input_key} not found in dataset.')
+    print(f'Output file has {len(gen_df)} samples.')
     
     # Check which samples to generate
     idx_todo = gen_df.index.tolist()
