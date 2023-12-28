@@ -256,8 +256,6 @@ def infer(
     if output_path and os.path.exists(output_path):
         print(f"Loading output file from {output_path}...")
         gen_df = load_file(output_path)
-        if output_key not in gen_df.columns:
-            gen_df[output_key] = None
     elif input_path and os.path.exists(input_path):
         print(f"\nLoading input file from {input_path}...")
         data_df = load_file(input_path)
@@ -273,6 +271,8 @@ def infer(
     print('Output file columns: ', list(gen_df.columns))
     if input_key not in gen_df.columns:
         raise ValueError(f'Input key {input_key} not found in dataset.')
+    if output_key not in gen_df.columns:
+        gen_df[output_key] = None
     print(f'Output file has {len(gen_df)} samples.')
     
     # Check which samples to generate
