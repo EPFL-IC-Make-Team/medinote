@@ -277,6 +277,8 @@ def infer(
     idx_done = gen_df[gen_df[output_key].notnull()]['idx'].tolist()
     idx_todo = [i for i in gen_df.index if i not in idx_done]
     if mode == 'generator' and not use_gpt_summary:
+        if 'pred_summary' not in gen_df.columns:
+            raise ValueError(f'No patient summaries found in {input_path}.')
         idx_todo = [i for i in idx_todo if gen_df.loc[i]['pred_summary'] is not None]
         print(f"Found {len(idx_todo)} generated summaries.")
         if len(idx_todo) == 0:
