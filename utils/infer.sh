@@ -9,7 +9,8 @@ python3 utils/inference.py \
     --num_samples 10 \
     --mode summarizer \
     --template_path /pure-mlo-scratch/make_project/ClinicalNotes/generation/templates/template.json \
-
+    --verbose
+    
 # 7B generator (from summarizer's summaries)
 python3 utils/inference.py \
     --model_name meditron-7b-generator \

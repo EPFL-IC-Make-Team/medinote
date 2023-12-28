@@ -149,7 +149,12 @@ def check_summary(answer, prev_answer, template):
 # ----------------------- Inference pipeline ----------------------- #
     
 
-def infer_summary(dialog, pipe, template, instructions, max_tries=3): 
+def infer_summary(dialogue, 
+                  pipe, 
+                  template, 
+                  instructions, 
+                  max_tries=3, 
+                  verbose=False): 
     '''
     Generates a patient summary from a patient-doctor conversation.
     If the generated summary is incomplete, query the model again with the missing fields.
@@ -161,27 +166,25 @@ def infer_summary(dialog, pipe, template, instructions, max_tries=3):
     while not valid and max_tries > 0:
         if missing == {}:
             starter = '{\n"visit motivation": '
-            prompt = instructions[0] + '\n\n' + dialog + '\n\n' + instructions[1] + '\n\n' + starter
+            prompt = instructions[0] + '\n\n' + dialogue + '\n\n' + instructions[1] + '\n\n' + starter
         else: 
             starter = '{'
             if missing != {}:
                 starter += f'\n"{list(missing.keys())[0]}": '
 
-            prompt = instructions[0] + '\n\n' + dialog \
+            prompt = instructions[0] + '\n\n' + dialogue \
                 + '\n\nNow, fill in the following template: \n\n' \
                 + formatting(json.dumps(missing, indent=4)) \
                 + '\n\n' + starter
-            
-        print(f'\n\n### PROMPT:\n\n{prompt}')
-        partial_answer = starter + pipe(prompt)[0]['generated_text']
+        if verbose: print(f'\n\n### PROMPT:\n\n{prompt}')
+        partial_answer = starter + pipe(prompt)[0]['generated_text'].strip()
         limiter = re.search(r'}\s*}', partial_answer)
-        if limiter: partial_answer = partial_answer[:limiter.end()]
+        if limiter: partial_answer = partial_answer[:limiter.end()].strip()
         valid, missing, current_answer = check_summary(partial_answer, current_answer, template)
-        if not valid: 
-            print(f'\n\n### INVALID:\n{partial_answer}')
-            print(f'\n\n### MISSING:\n{missing}')
-
         max_tries -= 1
+    if not valid:
+        if verbose: print(f'Could not generate a valid summary in {max_tries} tries.')
+        return None
     answer = json.dumps(current_answer, indent=4)
     return answer
 
@@ -194,7 +197,8 @@ def infer(
         num_samples=None, 
         mode='summarizer',
         template_path=None,
-        use_gpt_summary=False):
+        use_gpt_summary=False,
+        verbose=False):
     '''
     Loads a model and generates clinical notes. 
     Can be used for either 
@@ -292,13 +296,12 @@ def infer(
 
         if mode == 'generator' or mode == 'direct':
             query = instructions[0] + '\n\n' + row[input_key] + '\n\n' + instructions[1]
-            print(f'\n\n### PROMPT:\n\n{query}')
+            if verbose: print(f'\n\n### PROMPT:\n\n{query}')
             answer = pipe(query)[0]['generated_text']
 
         elif mode == 'summarizer':
-            answer = infer_summary(row[input_key], pipe, template, instructions)
-
-        print(f'\n\n### ANSWER: \n\n{answer}')
+            answer = infer_summary(row[input_key], pipe, template, instructions, verbose=verbose)
+        if verbose: print(f'\n\n### ANSWER: \n\n{answer}')
         
         gen_df.at[i, output_key] = answer
         gen_df.at[i, 'model_name'] = model_name
@@ -339,5 +342,9 @@ if __name__ == "__main__":
                         action='store_true',
                         default=False,
                         help='For generator mode only: whether to use GPT-4 summaries as input')
+    parser.add_argument('--verbose',
+                        action='store_true',
+                        default=False,
+                        help='Whether to print prompts and answers')
     args = parser.parse_args()
     infer(**vars(args))
