@@ -260,6 +260,8 @@ def infer(
     if input_path: 
         print(f"\nLoading input file from {input_path}...")
         data_df = load_file(input_path)
+        if 'idx' not in data_df.columns:
+            data_df['idx'] = data_df.index
     elif not output_path: 
         raise ValueError(f"Input path must be specified if output path is not.")
     print('Dataset columns: ', data_df.columns)
@@ -268,12 +270,9 @@ def infer(
     if os.path.exists(output_path):
         print(f"Loading output file from {output_path}...")
         gen_df = load_file(output_path)
-        print(f"Output file already exists at {output_path}. {len(idx_done)} samples already generated.")
     else:
         print(f"Initializing output file at {output_path}...")
         gen_df = data_df.copy()
-        if 'idx' not in gen_df.columns:
-            gen_df['idx'] = gen_df.index
         gen_df[output_key] = None
         gen_df['model_name'] = model_name
     
