@@ -94,10 +94,12 @@ def load_template(template_path):
     '''
     Loads the JSON patient summary template from the path. 
     '''
-    if not os.path.exists(template_path):
+    if not template_path:
+        raise ValueError(f'Template path must be specified for summarizer mode.')
+    elif not os.path.exists(template_path):
         raise FileNotFoundError(f'Template not found at {template_path}.')
     with open(template_path) as f:
-        template = json.dumps(json.load(f), indent=4)
+        template = json.load(f)
     return template
 
 def complete_json(text): 
@@ -117,7 +119,7 @@ def complete_json(text):
         break
     return data
 
-def check_summary(answer, prev_answer, template_path): 
+def check_summary(answer, prev_answer, template): 
     '''
     Temporary fix for limited context length. 
     
@@ -125,12 +127,6 @@ def check_summary(answer, prev_answer, template_path):
     Given the (potentially partial) model output, check whether all fields are filled. 
     Otherwise, outputs the features that are missing. 
     '''
-    # Load patient summary template
-    if not os.path.exists(template_path):
-        raise FileNotFoundError(f'Template not found at {template_path}.')
-    with open(template_path) as f:
-        template = json.load(f)
-
     # Convert answer to a complete JSON dictionary
     answer = complete_json(answer)
     if answer is None:
@@ -150,7 +146,7 @@ def check_summary(answer, prev_answer, template_path):
 # ----------------------- Inference pipeline ----------------------- #
     
 
-def infer_summary(dialog, pipe, template_path, instructions, max_tries=3): 
+def infer_summary(dialog, pipe, template, instructions, max_tries=3): 
     '''
     Generates a patient summary from a patient-doctor conversation.
     If the generated summary is incomplete, query the model again with the missing fields.
@@ -178,7 +174,10 @@ def infer_summary(dialog, pipe, template_path, instructions, max_tries=3):
         limiter = re.search(r'}\s*}', partial_answer)
         if limiter: partial_answer = partial_answer[:limiter.end()]
         print(f'\n\n### PARTIAL ANSWER:\n\n{partial_answer}')
-        valid, missing, current_answer = check_summary(partial_answer, current_answer, template_path)
+        valid, missing, current_answer = check_summary(partial_answer, current_answer, template)
+        print(f'\n\n### VALID: {valid}')
+        print(f'\n\n### MISSING:\n\n{missing}')
+
         max_tries -= 1
     answer = json.dumps(current_answer, indent=4)
     return answer
@@ -238,8 +237,7 @@ def infer(
     print(f"\nInitalizing pipeline...")
     stopping_criteria = None
     if mode == 'summarizer':
-        if template_path is None:
-            raise ValueError(f"Template path must be specified for summarizer mode.")
+        template = load_template(template_path)
         stoppers = ['visit motivation']
         stops = tokenizer(stoppers, add_special_tokens=False)['input_ids']
         stopping_criteria = StoppingCriteriaList([StoppingCriteriaSub(stops=stops)])
@@ -284,7 +282,7 @@ def infer(
             answer = pipe(query)[0]['generated_text']
 
         elif mode == 'summarizer':
-            answer = infer_summary(row[input_key], pipe, template_path, instructions)
+            answer = infer_summary(row[input_key], pipe, template, instructions)
 
         print(f'\n\n### ANSWER: \n\n{answer}')
         
