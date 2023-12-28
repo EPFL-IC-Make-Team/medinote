@@ -165,13 +165,10 @@ def infer_summary(dialogue,
 
     while not valid and max_tries > 0:
         if missing == {}:
-            starter = '{\n"visit motivation": '
+            starter = '{\n"visit motivation":'
             prompt = instructions[0] + '\n\n' + dialogue + '\n\n' + instructions[1] + '\n\n' + starter
         else: 
-            starter = '{'
-            if missing != {}:
-                starter += f'\n"{list(missing.keys())[0]}": '
-
+            starter = '{\n"' + f'{list(missing.keys())[0]}":'
             prompt = instructions[0] + '\n\n' + dialogue \
                 + '\n\nNow, fill in the following template: \n\n' \
                 + formatting(json.dumps(missing, indent=4)) \
