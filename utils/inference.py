@@ -258,6 +258,7 @@ def infer(
         data_df = load_file(input_path)
     elif not output_path: 
         raise ValueError(f"Input path must be specified if output path is not.")
+    print('Dataset columns: ', data_df.columns)
 
     # Load output file
     if os.path.exists(output_path):
@@ -276,8 +277,8 @@ def infer(
     idx_done = gen_df[gen_df[output_key].notnull()]['idx'].tolist()
     idx_todo = [i for i in gen_df.index if i not in idx_done]
     if mode == 'generator' and not use_gpt_summary:
-        idx_todo = [i for i in idx_todo if gen_df.loc[i]['summary'] is not None]
-        print(f"Using {len(idx_todo)} generated summaries as input.")
+        idx_todo = [i for i in idx_todo if gen_df.loc[i]['pred_summary'] is not None]
+        print(f"Found {len(idx_todo)} generated summaries.")
         if len(idx_todo) == 0:
             raise ValueError(f'No patient summaries found in {input_path}.')
 
