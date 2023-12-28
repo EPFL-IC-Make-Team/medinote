@@ -60,7 +60,7 @@ PARAMETERS = {
         'max_time': 300,
     },
     'generator' : {
-        'max_length': 1024, 
+        'max_length': 2048, 
         'do_sample': True,
         'num_beams': 1,
         'top_p': 0.95,
@@ -68,7 +68,7 @@ PARAMETERS = {
         'return_full_text': False, 
     },
     'direct' : {
-        'max_length': 1024,
+        'max_length': 2048,
         'do_sample': True,
         'num_beams': 1,
         'top_p': 0.95,
