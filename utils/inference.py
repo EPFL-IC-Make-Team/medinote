@@ -10,8 +10,11 @@ import json as json
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers import pipeline, StoppingCriteria, StoppingCriteriaList
+import sys
 
-from .data import *
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
+
+from utils.data import *
 
 # ----------------------- Constants ----------------------- #
 

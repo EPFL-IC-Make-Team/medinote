@@ -13,13 +13,15 @@ Here we want to evaluate the quality of our generated clinical notes using GPT-4
 between the two answers on a scale of 1 to 10. The higher the number the closer the model’s quality to GPT-4's.
 
 '''
-
-from .chat import *
-from .inference import *
-
 import re
 import numpy as np
 from evaluate import load
+import sys
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
+
+from utils.chat import *
+from utils.inference import *
 
 BERT_SCORER = load("bertscore")
 ROUGE_SCORER = load("rouge")

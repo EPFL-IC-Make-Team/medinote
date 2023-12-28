@@ -12,7 +12,9 @@ import os
 from tqdm import tqdm 
 import pandas as pd
 import json
+import sys
 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 
 def get_openai_credentials(path='generation/keys.json'):
     if not os.path.exists(path):

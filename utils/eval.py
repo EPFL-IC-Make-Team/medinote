@@ -14,16 +14,19 @@ between the two answers on a scale of 1 to 10. The higher the number the closer 
 
 '''
 
-from .chat import *
-from .inference import *
-from .scorer import *
-from .data import *
+from utils.chat import *
+from utils.inference import *
+from utils.scorer import *
+from utils.data import *
 
 import numpy as np
 import argparse
 from evaluate import load
 from multielo import MultiElo
 import matplotlib.pyplot as plt
+import sys
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 
 BERT_SCORER = load("bertscore")
 ROUGE_SCORER = load("rouge")

@@ -9,8 +9,11 @@ import time
 import argparse
 import shutil
 import pandas as pd
+import sys
 
-from .chat import *
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
+
+from utils.chat import *
 
 
 def make_prompts(instruction, note=None, dialogue=None, template=None):
