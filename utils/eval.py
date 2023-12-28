@@ -25,6 +25,7 @@ from evaluate import load
 from multielo import MultiElo
 import matplotlib.pyplot as plt
 import sys
+import os
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 
