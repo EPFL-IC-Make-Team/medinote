@@ -11,7 +11,7 @@ from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers import pipeline, StoppingCriteria, StoppingCriteriaList
 
-from data import *
+from .data import *
 
 # ----------------------- Constants ----------------------- #
 
