@@ -283,6 +283,8 @@ def infer(
         print(f"Found {len(idx_todo)} generated summaries.")
         if len(idx_todo) == 0:
             raise ValueError(f'No patient summaries found in {input_path}.')
+    if num_samples and len(idx_todo) > num_samples:
+        idx_todo = idx_todo[:num_samples]
 
     # Generate samples
     for i in tqdm(idx_todo, desc='Generating samples'):
@@ -301,9 +303,6 @@ def infer(
         gen_df.at[i, output_key] = answer
         gen_df.at[i, 'model_name'] = model_name
         save_file(gen_df, output_path)
-        idx_done.append(i)
-        if num_samples and len(idx_done) >= num_samples:
-            break
     return gen_df
     
 
