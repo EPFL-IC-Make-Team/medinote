@@ -160,12 +160,12 @@ def infer_summary(dialog, pipe, template, instructions, max_tries=3):
 
     while not valid and max_tries > 0:
         if missing == {}:
-            starter = '{\n"visit motivation": "'
+            starter = '{\n"visit motivation": '
             prompt = instructions[0] + '\n\n' + dialog + '\n\n' + instructions[1] + '\n\n' + starter
         else: 
             starter = '{'
             if missing != {}:
-                starter += f'\n"{list(missing.keys())[0]}": "'
+                starter += f'\n"{list(missing.keys())[0]}": '
 
             prompt = instructions[0] + '\n\n' + dialog \
                 + '\n\nNow, fill in the following template: \n\n' \
@@ -294,7 +294,8 @@ def infer(
         gen_df.at[i, output_key] = answer
         gen_df.at[i, 'model_name'] = model_name
         save_file(gen_df, output_path)
-        if num_samples and i >= num_samples:
+        idx_done.append(i)
+        if num_samples and len(idx_done) >= num_samples:
             break
     return gen_df
     
