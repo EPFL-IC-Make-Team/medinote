@@ -250,28 +250,27 @@ def infer(
                             pad_token_id=tokenizer.eos_token_id,
                             stopping_criteria=stopping_criteria,
                             **gen_parameters)
-    
-    # Load data
-    if input_path: 
+
+    # Load data
+    if output_path and os.path.exists(output_path):
+        print(f"Loading output file from {output_path}...")
+        gen_df = load_file(output_path)
+    elif input_path and os.path.exists(input_path):
         print(f"\nLoading input file from {input_path}...")
         data_df = load_file(input_path)
         if 'idx' not in data_df.columns:
             data_df['idx'] = data_df.index
-    elif not output_path: 
-        raise ValueError(f"Input path must be specified if output path is not.")
-    print('Dataset columns: ', data_df.columns)
-    if input_key not in data_df.columns:
-        raise ValueError(f'Input key {input_key} not found in dataset.')
-
-    # Load output file
-    if os.path.exists(output_path):
-        print(f"Loading output file from {output_path}...")
-        gen_df = load_file(output_path)
-    else:
         print(f"Initializing output file at {output_path}...")
         gen_df = data_df.copy()
         gen_df[output_key] = None
         gen_df['model_name'] = model_name
+    elif input_path:
+        raise FileNotFoundError(f'Input file not found at {input_path}.')
+    else:
+        raise ValueError(f'Input file must be specified if output file is not.')
+    print('Output file columns: ', list(gen_df.columns))
+    if input_key not in gen_df.columns:
+        raise ValueError(f'Input key {input_key} not found in dataset.')
     
     # Check which samples to generate
     idx_todo = gen_df.index.tolist()
