@@ -64,6 +64,17 @@ if [ "$1" == "meditron-13b-generator"  ] || [  "$1" == "all" ]; then
         --mode generator \
         --verbose
 fi
+if [ "$1" == "meditron-13b-generator-gpt"  ] || [  "$1" == "all" ]; then
+    python3 utils/inference.py \
+        --model_name meditron-13b-generator \
+        --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-13b-generator/hf_checkpoint/ \
+        --input_path /pure-mlo-scratch/make_project/data/raw/summaries_full_test.jsonl \
+        --output_path /pure-mlo-scratch/make_project/data/inference/generation.jsonl \
+        --num_samples 5 \
+        --mode generator  \
+        --verbose \
+        --use_gpt_summary
+fi
 if [ "$1" == "meditron-13b-direct"  ] || [  "$1" == "all" ]; then
     python3 utils/inference.py \
         --model_name meditron-13b-direct \
