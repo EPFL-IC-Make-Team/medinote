@@ -60,15 +60,15 @@ PARAMETERS = {
         'max_time': 300,
     },
     'generator' : {
-        'max_length': 2048, 
+        'max_length': 1024, 
         'do_sample': True,
         'num_beams': 1,
         'top_p': 0.95,
         'num_return_sequences': 1,
-        'return_full_text': False
+        'return_full_text': False, 
     },
     'direct' : {
-        'max_length': 2048,
+        'max_length': 1024,
         'do_sample': True,
         'num_beams': 1,
         'top_p': 0.95,
@@ -321,7 +321,8 @@ if __name__ == "__main__":
                         default=None,
                         help='Path to the data file.')
     parser.add_argument('--output_path', 
-                        type=str, 
+                        type=str,
+                        default=None, 
                         help='Path to the output file with generated notes. ')
     parser.add_argument('--num_samples',
                         type=int,

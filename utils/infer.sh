@@ -7,7 +7,7 @@ if [ "$1" == "meditron-7b-summarizer" ] || [ "$1" == "all" ]; then
         --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-7b-summarizer/hf_checkpoint/ \
         --input_path /pure-mlo-scratch/make_project/data/raw/summaries_full_test.jsonl \
         --output_path /pure-mlo-scratch/make_project/data/inference/generation.jsonl \
-        --num_samples 10 \
+        --num_samples 5 \
         --mode summarizer \
         --template_path /pure-mlo-scratch/make_project/ClinicalNotes/generation/templates/template.json \
         --verbose
@@ -18,7 +18,7 @@ if [ "$1" == "meditron-7b-generator"  ] || [  "$1" == "all" ]; then
         --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-7b-generator/hf_checkpoint/ \
         --input_path /pure-mlo-scratch/make_project/data/raw/summaries_full_test.jsonl \
         --output_path /pure-mlo-scratch/make_project/data/inference/generation.jsonl \
-        --num_samples 1000 \
+        --num_samples 5 \
         --mode generator  \
         --verbose
 fi
@@ -28,7 +28,7 @@ if [ "$1" == "meditron-7b-direct"  ] || [  "$1" == "all" ]; then
         --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-7b-direct/hf_checkpoint/ \
         --input_path /pure-mlo-scratch/make_project/data/raw/summaries_full_test.jsonl \
         --output_path /pure-mlo-scratch/make_project/data/inference/generation.jsonl \
-        --num_samples 1000 \
+        --num_samples 5 \
         --mode direct \
         --verbose
 fi
