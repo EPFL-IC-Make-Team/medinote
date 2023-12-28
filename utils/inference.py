@@ -173,10 +173,10 @@ def infer_summary(dialog, pipe, template, instructions, max_tries=3):
         partial_answer = starter + pipe(prompt)[0]['generated_text']
         limiter = re.search(r'}\s*}', partial_answer)
         if limiter: partial_answer = partial_answer[:limiter.end()]
-        print(f'\n\n### PARTIAL ANSWER:\n\n{partial_answer}')
         valid, missing, current_answer = check_summary(partial_answer, current_answer, template)
-        print(f'\n\n### VALID: {valid}')
-        print(f'\n\n### MISSING:\n\n{missing}')
+        if not valid: 
+            print(f'\n\n### INVALID:\n{partial_answer}')
+            print(f'\n\n### MISSING:\n{missing}')
 
         max_tries -= 1
     answer = json.dumps(current_answer, indent=4)
@@ -266,6 +266,8 @@ def infer(
     else:
         print(f"Initializing output file at {output_path}...")
         gen_df = data_df.copy()
+        if 'idx' not in gen_df.columns:
+            gen_df['idx'] = gen_df.index
         gen_df[output_key] = None
         gen_df['model_name'] = model_name
 
@@ -288,11 +290,9 @@ def infer(
         
         gen_df.at[i, output_key] = answer
         gen_df.at[i, 'model_name'] = model_name
-        if i % 10 == 0: 
-            save_file(gen_df, output_path)
+        save_file(gen_df, output_path)
         if num_samples and i >= num_samples:
             break
-    save_file(gen_df, output_path)
     return gen_df
     
 
