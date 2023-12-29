@@ -102,14 +102,16 @@ class Scorer():
 
     def BERT_scorer(self, pairs):
         '''BERT score for summary evaluation'''
-        print("Computing BERT scores...")
+        if len(pairs) > 10:
+            print("Computing BERTscores...")
         scores = {'bert': 
             BERT_SCORER.compute(
                 predictions=[pair['pred'] for pair in pairs],
                 references=[pair['gold'] for pair in pairs],
                 lang='en')['f1']
         }
-        print('BERTscores computed.')
+        if len(pairs) > 10:
+            print('BERTscores computed.')
         return scores
     
     def ranker_formatting(self, answer):

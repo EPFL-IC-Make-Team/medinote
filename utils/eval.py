@@ -42,6 +42,8 @@ COUNTS_TYPES = ['missing_keys_count', 'extra_keys_count', 'common_none_count',
                 'gold_none_count', 'pred_none_count', 'common', 'total']
 KEY_MISMATCH_TYPE = ['gold_none_keys', 'pred_none_keys', 'missing_keys']
 
+EVALUATION_STEPS = ['eval dir', 'flatten dicts', 'clean dicts and counts', ] 
+
 
 EVAL_DIR = '../evaluation'
 os.makedirs(EVAL_DIR, exist_ok=True)
@@ -51,7 +53,7 @@ os.makedirs(EVAL_DIR, exist_ok=True)
 
 def match_list(gold_list, pred_list, scorer_type='bert'):
     '''
-    Given two lists of (sub)-dictionaries, match corresponding dictionaries by maximum score.
+    Given two lists of (sub)-dictionaries, matches corresponding dictionaries by maximum score.
     Arguments: 
         - gold_list (list of dict): list of gold (sub)-dictionaries
         - pred_list (list of dict): list of predicted (sub)-dictionaries
@@ -69,62 +71,31 @@ def match_list(gold_list, pred_list, scorer_type='bert'):
         return gold_list, pred_list
     if len(gold_list) == 0:
         matched_gold = [{}] * len(pred_list)
+        return matched_gold, pred_list
     if len(pred_list) == 0:
         matched_pred = [{}] * len(gold_list)
+        return gold_list, matched_pred
 
-    pred_list_ = pred_list.copy()
-    matched_pred = []
-    matched_gold = gold_list.copy()
-
-    # Iterate through each element in gold_list
-    for gold_item in gold_list:
-        best_match_index = -1
-        print(f"gold_item: {gold_item}")
-
-        # Find the best match in pred_list
-        if len(pred_list_) > 0:
-            gold_string = ", ".join(str(value) for value in gold_item.values() if value is not NONE_FIELD)
-            pred_strings = [", ".join(str(value) for value in pred_item.values() if value is not NONE_FIELD)
-                             for pred_item in pred_list_]
-            pairs = [{'gold': gold_string, 'pred': pred_string} for pred_string in pred_strings]
-            scores = scorer(pairs)[scorer_type]
-            print(f"scores: {scores}")
-            best_match_index = np.argmax(scores)
-            matched_pred.append(pred_list_[best_match_index])
-            pred_list_.pop(best_match_index)
-
-    if len(pred_list_) > 0:
-        matched_gold += [{}] * len(pred_list)
-        matched_pred += pred_list_
-    else:
-        matched_pred.extend([{}] * (len(matched_gold) - len(matched_pred)))
-
-    print(f"matched_gold: {matched_gold}")
-    print(f"matched_pred: {matched_pred}")
-
-    # Other variant: compute scores for each pair and match the best ones
-    # this way, we make sure that we don't consider the best match for the gold items in order, but overall
-    # TODO: keep this variant if it's better (and double-check its correctness)
     max_items = max(len(gold_list), len(pred_list))
-    new_matched_gold = gold_list.copy() + [{}] * (max_items - len(gold_list))
-    new_matched_pred = [{}] * max_items
+    matched_gold = gold_list.copy() + [{}] * (max_items - len(gold_list))
+    matched_pred = [{}] * max_items
 
     gold_strings = [", ".join(str(value) for value in gold_item.values() if value is not NONE_FIELD) for gold_item in gold_list]
     pred_strings = [", ".join(str(value) for value in pred_item.values() if value is not NONE_FIELD) for pred_item in pred_list]
-    pairs = [{'gold': gs, 'pred': ps} for gs in gold_strings for ps in pred_strings]
-    print(f"total pairs: {len(pairs)}, all pairs: {pairs}")
+    pairs = [{'gold' : gold_string, 'pred' : pred_string} for gold_string in gold_strings for pred_string in pred_strings]
+    #print(f"total pairs: {len(pairs)}, all pairs: {pairs}")
     scores = scorer(pairs)[scorer_type]
     scores = np.array(scores).reshape(len(gold_list), len(pred_list))
-    print(f"scores: {scores}")
+    #print(f"scores: {scores}")
     min_items = min(len(gold_list), len(pred_list))
     for _ in range(min_items):
         best_match_index = np.unravel_index(np.argmax(scores, axis=None), scores.shape) # get argmax in scores dimensions (2D)
-        new_matched_pred[best_match_index[0]] = pred_list[best_match_index[1]] # add best match pred at right index (matching gold)
+        matched_pred[best_match_index[0]] = pred_list[best_match_index[1]] # add best match pred at right index (matching gold)
         scores[best_match_index[0], :] = 0 # remove scores for that match in gold items
         scores[:, best_match_index[1]] = 0 # remove scores for that match in pred items
 
-    print(f"new_matched_gold: {new_matched_gold}")
-    print(f"new_matched_pred: {new_matched_pred}")
+    #print(f"new_matched_gold: {matched_gold}")
+    #print(f"new_matched_pred: {matched_pred}")
 
     return matched_gold, matched_pred
 
@@ -297,7 +268,7 @@ def summary_statistics(golds, preds, save_path, score_types=['rouge', 'bleu', 'b
         
     return stats_df
 
-def summary_evaluation(path, save_path = None,score_types=['bleu', 'rouge', 'bert', 'gpt_score']): 
+def summary_evaluation(path, save_path = None ,score_types=['bleu', 'rouge', 'bert', 'gpt_score']): 
     '''
     1 - Patient summary evaluation
     Run evaluation on a dataframe with 'gold' and 'pred' patient summaries. 
@@ -330,8 +301,22 @@ def summary_evaluation(path, save_path = None,score_types=['bleu', 'rouge', 'ber
     dataset = load_file(path)
     
     if save_path is None:
-        save_path = path.replace('.jsonl', '_evaluation.jsonl')
-    stats = summary_statistics(dataset['gold'], dataset['pred'], score_types, save_path)
+        save_path = path.replace('.jsonl', '_evaluation')
+
+    if os.path.exists(save_path):
+        print("Evaluation directory exists, loading")
+    else:
+        os.mkdir(save_path) 
+        print("Creating Evaluation directory and prgress monitoring")
+        progress_dict = {
+            'eval directory' : 'done',
+            'flatten dicts' : 'tbd',
+            ''            
+        }
+        with open(f"{save_path}/progress") as f:
+            json.dump(progress_dict, f)
+
+    stats = summary_statistics(dataset['gold'], dataset['pred'], save_path, score_types)
 
     if 'rouge' in score_types:
         score_types.remove('rouge')
