@@ -45,8 +45,21 @@ KEY_MISMATCH_TYPE = ['gold_none_keys', 'pred_none_keys', 'missing_keys']
 
 
 
-EVAL_DIR = '../evaluation'
+EVAL_DIR = 'evaluation'
 os.makedirs(EVAL_DIR, exist_ok=True)
+# ----------------------- 0 - Preparing Evaluation inputs ----------------------- #
+
+def save_evaluation_input(output_filename, inference_sample,pred_data, gold_data = 'data'):
+    eval_input = inference_sample[['idx', gold_data, pred_data]].dropna()
+    eval_input = eval_input.rename(columns={gold_data: 'gold', pred_data: 'pred'})
+    save_file(eval_input, os.path.join(EVAL_DIR, output_filename))
+
+def build_evaluation_inputs(inference_sample_path):
+    inference_sample = load_file(inference_sample_path)
+    save_evaluation_input('summary_eval_input.jsonl', inference_sample, 'pred_summary', 'summary')
+    save_evaluation_input( 'note_eval_input.jsonl', inference_sample,'pred_note')
+    save_evaluation_input('direct_note_eval_input.jsonl', inference_sample,'pred_direct')
+    save_evaluation_input('gpt_note_eval_input.jsonl', inference_sample, 'pred_note-gpt')
 
 # ----------------------- 1 - Patient Summary evaluation ----------------------- #
     
