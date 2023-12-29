@@ -47,7 +47,8 @@ KEY_MISMATCH_TYPE = ['gold_none_keys', 'pred_none_keys', 'missing_keys']
 
 EVAL_DIR = 'evaluation'
 os.makedirs(EVAL_DIR, exist_ok=True)
-# ----------------------- 0 - Preparing Evaluation inputs ----------------------- #
+
+# ----------------------- 0 - Prepare Evaluation inputs ----------------------- #
 
 def save_evaluation_input(output_filename, inference_sample,pred_data, gold_data = 'data'):
     eval_input = inference_sample[['idx', gold_data, pred_data]].dropna()
