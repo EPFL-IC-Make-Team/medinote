@@ -18,6 +18,7 @@ from utils.chat import *
 from utils.inference import *
 from utils.scorer import *
 from utils.data import *
+from utils.saving_manager import *
 
 import numpy as np
 import argparse
@@ -42,7 +43,6 @@ COUNTS_TYPES = ['missing_keys_count', 'extra_keys_count', 'common_none_count',
                 'gold_none_count', 'pred_none_count', 'common', 'total']
 KEY_MISMATCH_TYPE = ['gold_none_keys', 'pred_none_keys', 'missing_keys']
 
-EVALUATION_STEPS = ['eval dir', 'flatten dicts', 'clean dicts and counts', ] 
 
 
 EVAL_DIR = '../evaluation'
@@ -119,8 +119,8 @@ def flatten_dict(gold, pred, parent_key=''):
             if isinstance(gold_value, dict):
                 flat.extend(flatten_dict(gold_value, pred[gold_key], parent_key=f"{parent_key}{gold_key}/"))
             if isinstance(gold_value, list): #We have to match most similar lists
-                matched_gold, matched_pred = match_list(
-                    gold_list = gold_value, pred_list = pred[gold_key])
+                matched_gold, matched_pred = match_list(gold_list = gold_value, 
+                                                        pred_list = pred[gold_key])
                 for i, gold_list_val in enumerate(matched_gold):
                     if isinstance(gold_list_val, str):
                         flat.append((f"{parent_key}{gold_key}/{i}", (gold_list_val, matched_pred[i])))
@@ -191,9 +191,11 @@ def get_counts_and_clean_dict(flattened_dict):
     counts['gold_none_count'] = len(key_mismatches['gold_none_keys'])
     counts['pred_none_count'] = len(key_mismatches['pred_none_keys'])
     counts['missing_keys_count'] = len(key_mismatches['missing_keys'])
+
+    print(clean_flat_dict)
     return counts, clean_flat_dict, key_mismatches
 
-def summary_statistics(golds, preds, save_path, score_types=['rouge', 'bleu', 'bert', 'gpt_score']):
+def summary_statistics(golds, preds, saving_manager, score_types=['rouge', 'bleu', 'bert', 'gpt_score']):
     '''
     Given several (gold,pred) patient summaries pairs, flatten and match keys, 
     then compute matching scores & counts.
@@ -215,30 +217,44 @@ def summary_statistics(golds, preds, save_path, score_types=['rouge', 'bleu', 'b
                          Please choose in 'bleu', 'rouge', 'bert' and 'gpt_score'.")
     
     # Flatten and match keys of each dict pair
-    stats_df = pd.concat([golds, preds], axis=1)
 
-    print(f"Flattening summary dictionnaries and matching keys...")
-    stats_df['flat_dicts'] = stats_df.apply(lambda row: flatten_dict(row['gold'], row['pred']), axis=1)
-    stats_df.drop(['gold', 'pred'], axis=1, inplace=True)
+    if saving_manager.get_progress_dict()['flatten and match dicts'] != 'done':
+
+        stats_df = pd.concat([golds, preds], axis=1)
+
+        print(f"Flattening summary dictionnaries and matching keys...")
+        stats_df['flat_dicts'] = stats_df.apply(lambda row: flatten_dict(row['gold'], row['pred']), axis=1)
+        stats_df.drop(['gold', 'pred'], axis=1, inplace=True)
+
+        saving_manager.flatten_and_match_dicts_update(stats_df)
+    
+    elif saving_manager.get_progress_dict()['clean dicts and counts'] != 'done':
+        stats_df = saving_manager.load_flatten_and_match_dicts()
 
     # Compute counts and clean each flattened dict
 
-    print(f"Computing counts and cleaning flattened dictionaries...")
-    stats_df[['counts','cleaned_flat_dicts','key_mismatches']] = pd.DataFrame(
-                        stats_df['flat_dicts'].apply(get_counts_and_clean_dict).tolist(),
-                        columns=['counts', 'cleaned_flat_dicts', 'key_mismatches'])
-    
-    stats_df.drop(['flat_dicts'], axis=1, inplace=True)
+    if saving_manager.get_progress_dict()['clean dicts and counts'] != 'done':
+        print(f"Computing counts and cleaning flattened dictionaries...")
+        stats_df[['counts','cleaned_flat_dicts','key_mismatches']] = pd.DataFrame(
+                            stats_df['flat_dicts'].apply(get_counts_and_clean_dict).tolist(),
+                            columns=['counts', 'cleaned_flat_dicts', 'key_mismatches'])
+        
+        stats_df.drop(['flat_dicts'], axis=1, inplace=True)
+        # Unpack counts, key_mismatches and matched (key, (gold,pred)) pairs
+        for key_mismatch in KEY_MISMATCH_TYPE:
+            stats_df[key_mismatch] = stats_df['key_mismatches'].apply(lambda x: x[key_mismatch])
+        
+        stats_df.drop(['key_mismatches'], axis=1, inplace=True)
 
-    # Unpack counts, key_mismatches and matched (key, (gold,pred)) pairs
-    for key_mismatch in KEY_MISMATCH_TYPE:
-        stats_df[key_mismatch] = stats_df['key_mismatches'].apply(lambda x: x[key_mismatch])
-    
-    stats_df.drop(['key_mismatches'], axis=1, inplace=True)
+        for count_type in COUNTS_TYPES:
+            stats_df[count_type] = stats_df['counts'].apply(lambda x: x[count_type])
+        stats_df.drop(['counts'], axis=1, inplace=True)
 
-    for count_type in COUNTS_TYPES:
-        stats_df[count_type] = stats_df['counts'].apply(lambda x: x[count_type])
-    stats_df.drop(['counts'], axis=1, inplace=True)
+        saving_manager.clean_dicts_and_counts_update(stats_df)
+
+    elif saving_manager.get_progress_dict()['summary_statistics'] != 'done': 
+        stats_df = saving_manager.load_clean_dicts_and_counts()
+
     scorer = Scorer(score_types)
 
     print(f"Initialized scorer with modes: {list(scorer.score_types)}.")
@@ -299,58 +315,59 @@ def summary_evaluation(path, save_path = None ,score_types=['bleu', 'rouge', 'be
     print(f"Running summary evaluation with score types: {score_types}")
     print(f"Loading data...")
     dataset = load_file(path)
-    
-    if save_path is None:
-        save_path = path.replace('.jsonl', '_evaluation')
+    eval_saving = EvalSaving(SUMMARY_EVALUATION_STEPS, path, save_path)
 
-    if os.path.exists(save_path):
-        print("Evaluation directory exists, loading")
+    if eval_saving.get_progress_dict()['summary_statistics'] != 'done':    
+        stats = summary_statistics(golds=dataset['gold'],
+                                   preds=dataset['pred'],
+                                   saving_manager=eval_saving,
+                                   score_types=score_types)
     else:
-        os.mkdir(save_path) 
-        print("Creating Evaluation directory and prgress monitoring")
-        progress_dict = {
-            'eval directory' : 'done',
-            'flatten dicts' : 'tbd',
-            ''            
-        }
-        with open(f"{save_path}/progress") as f:
-            json.dump(progress_dict, f)
-
-    stats = summary_statistics(dataset['gold'], dataset['pred'], save_path, score_types)
-
+        stats = eval_saving.load_summary_statistics()
+    
     if 'rouge' in score_types:
         score_types.remove('rouge')
         score_types.extend(ROUGE_SUB_SCORES)
 
     # Compute average matching scores accrosss all keys for each metric for each patient summary
-    for metric in score_types:
-        if metric != 'gpt_rank':
+    if eval_saving.get_progress_dict()['eval_by_sample'] != 'done':
+
+        for metric in score_types:
             dataset[f"mean_{metric}"] = stats[metric].apply(lambda x: np.mean(x))
-    
-    for count_type in COUNTS_TYPES:
-        dataset[count_type] = stats[count_type]
+        
+        for count_type in COUNTS_TYPES:
+            dataset[count_type] = stats[count_type]
+        eval_saving.save_eval_by_sample(dataset)
+    else:
+        dataset = eval_saving.load_eval_by_sample()
     
     # Compute average matching scores accross all patient summaries for each metric for each field
     # As well as average counts of missing, none_pred, none_gold
-    exploding1 = ['keys'] + score_types
-    score_by_keys = stats[exploding1].explode(exploding1)
-    score_by_keys = score_by_keys.groupby(['keys']).agg('mean')
-    N = dataset.shape[0]
-    score_by_keys = score_by_keys.merge(
-        stats['gold_none_keys'].explode('gold_none_keys').value_counts().rename('gold_none_prop')/N,
-        how='left',
-        left_on='keys', 
-        right_index=True).fillna(0)
-    score_by_keys = score_by_keys.merge(
-        stats['pred_none_keys'].explode('pred_none_keys').value_counts().rename('pred_none_prop')/N,
-        how='left',
-        left_on='keys',
-        right_index=True).fillna(0)
-    score_by_keys = score_by_keys.merge(
-        stats['missing_keys'].explode('missing_keys').value_counts().rename('missing_keys_prop')/N,
-        how='left',
-        left_on='keys',
-        right_index=True).fillna(0)
+    
+    if eval_saving.get_progress_dict()['eval_by_key'] != 'done':
+        exploding1 = ['keys'] + score_types
+        score_by_keys = stats[exploding1].explode(exploding1)
+        score_by_keys = score_by_keys.groupby(['keys']).agg('mean')
+        N = dataset.shape[0]
+        score_by_keys = score_by_keys.merge(
+            stats['gold_none_keys'].explode('gold_none_keys').value_counts().rename('gold_none_prop')/N,
+            how='left',
+            left_on='keys', 
+            right_index=True).fillna(0)
+        score_by_keys = score_by_keys.merge(
+            stats['pred_none_keys'].explode('pred_none_keys').value_counts().rename('pred_none_prop')/N,
+            how='left',
+            left_on='keys',
+            right_index=True).fillna(0)
+        score_by_keys = score_by_keys.merge(
+            stats['missing_keys'].explode('missing_keys').value_counts().rename('missing_keys_prop')/N,
+            how='left',
+            left_on='keys',
+            right_index=True).fillna(0)
+        
+        eval_saving.save_eval_by_key(score_by_keys)
+    else:
+        score_by_keys = eval_saving.load_eval_by_key()
     
     return dataset, score_by_keys
 
