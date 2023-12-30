@@ -2,13 +2,13 @@ import os
 import json
 import pandas as pd
 
-SUMMARY_EVALUATION_STEPS = {'create eval directory' : 'tbd', 'flatten and match dicts' : 'tbd', 'clean dicts and counts' : 'tbd', 'summary_statistics' : 'tbd', 'eval_by_sample' : 'tbd', 'eval_by_key' : 'tbd'}
+SUMMARY_EVALUATION_STEPS = {'create eval directory' : 'tbd', 'flatten and match dicts' : 'tbd', 'clean dicts and counts' : 'tbd', 'summary_statistics' : 'tbd', 'scores' : 'tbd', 'pairs_idx' : 'tbd' ,'eval_by_sample' : 'tbd', 'eval_by_key' : 'tbd'}
 NOTE_EVALUATION_STEPS = {'create eval directory' : 'tbd'}
 
 class EvalSaving():
     def __init__(self, steps ,path, save_path = None):
         if save_path is None:
-            save_path = path.replace('.jsonl', '_evaluation')
+            save_path = path.replace('.jsonl', '_eval_res')
             self.save_path = save_path
         else:
             self.save_path = save_path
@@ -24,7 +24,7 @@ class EvalSaving():
             self.progress_dict['create eval directory'] = 'done'
             with open(f"{save_path}/progress", 'w') as f:
                 json.dump(self.progress_dict, f)
-   
+    
     def get_progress_dict(self):
         return self.progress_dict
 
@@ -35,6 +35,7 @@ class EvalSaving():
     def flatten_and_match_dicts_update(self, df):
         df.to_json(f"{self.save_path}/flatten_and_match_dicts.jsonl", orient='records', lines=True)
         self.progress_dict['flatten and match dicts'] = 'done'
+        self.save_progress_dict['summary_statistics'] = 'in progress'
         self.save_progress_dict()
     
     def load_flatten_and_match_dicts(self):
@@ -61,19 +62,53 @@ class EvalSaving():
         return pd.read_json(f"{self.save_path}/summary_statistics.jsonl", orient='records', lines=True)
     
     def save_eval_by_sample(self, df, delete_summary_statistics = False):
-        df.to_json(f"{self.save_path}/eval_by_sample.jsonl", orient='records', lines=True)
+        df.to_json(f"{self.save_path}/summary_eval_by_sample.jsonl", orient='records', lines=True)
         self.progress_dict['eval_by_sample'] = 'done'
         self.save_progress_dict()
 
     def load_eval_by_sample(self):
-        return pd.read_json(f"{self.save_path}/eval_by_sample.jsonl", orient='records', lines=True)
+        return pd.read_json(f"{self.save_path}/summary_eval_by_sample.jsonl", orient='records', lines=True)
     
     def save_eval_by_key(self, df, delete_summary_statistics = False):
-        df.to_json(f"{self.save_path}/eval_by_key.jsonl", orient='records', lines=True)
+        df.to_json(f"{self.save_path}/summary_eval_by_key.jsonl", orient='records', lines=True)
         self.progress_dict['eval_by_key'] = 'done'
         if delete_summary_statistics:
             os.remove(f"{self.save_path}/summary_statistics.jsonl")
         self.save_progress_dict()
 
     def load_eval_by_key(self):
-        return pd.read_json(f"{self.save_path}/eval_by_key.jsonl", orient='records', lines=True)
+        return pd.read_json(f"{self.save_path}/summary_eval_by_key.jsonl", orient='records', lines=True)
+    
+    def save_pairs_idx(self, df):
+        df.to_json(f"{self.save_path}/pairs_to_score.jsonl", orient='records', lines=True)
+        self.progress_dict['pairs_idx'] = 'done'
+        self.save_progress_dict()
+    
+    def load_pairs_idx(self):
+        return pd.read_json(f"{self.save_path}/pairs_to_score.jsonl", orient='records', lines=True)
+
+    def save_one_score(self, batch_df, score_name, done = False):
+        with open(f"save_path_{score_name}.jsonl", 'a') as f:
+            f.write(batch_df.to_json(orient='records', lines=True))
+        if done:
+            self.progress_dict[score_name] = 'done'
+        else:
+            self.progress_dict[score_name] = 'in progress'
+        self.save_progress_dict()
+    
+    def load_one_score(self, score_name):
+        return pd.read_json(f"{self.save_path}/{score_name}.jsonl", orient='records', lines=True)
+    
+
+    def get_one_score_to_compute(self, score_name, pairs):
+        computed = self.load_one_score(score_name)
+        to_compute = pairs[~pairs['idx'].isin(computed['idx'])]
+        return to_compute
+            
+    def save_all_scores(self, df):
+        df.to_json(f"{self.save_path}/_scores.jsonl", orient='records', lines=True)
+        self.progress_dict['scores'] = 'done'
+        self.save_progress_dict()
+    
+    def load_all_scores(self):
+        return pd.read_json(f"{self.save_path}/_scores.jsonl", orient='records', lines=True)

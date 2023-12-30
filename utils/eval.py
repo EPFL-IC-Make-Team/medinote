@@ -271,18 +271,22 @@ def summary_statistics(golds, preds, saving_manager, score_types=['rouge', 'bleu
 
     scorer = Scorer(score_types)
 
-    print(f"Initialized scorer with modes: {list(scorer.score_types)}.")
-
     stats_df['keys'] = stats_df['cleaned_flat_dicts'].apply(lambda x: list(x.keys()))
     stats_df['pairs'] = stats_df['cleaned_flat_dicts'].apply(lambda x: list(x.values()))
     stats_df.drop(['cleaned_flat_dicts'], axis=1, inplace=True)
     
-    #Prepare df to pass to scorer (mainly flattening the list of list of keys and pairs)
-    pairs_df = stats_df[['keys', 'pairs']].explode(['keys', 'pairs'])
-    pairs_df['pairs'] = pairs_df['pairs'].apply(lambda x: {'gold': x[0], 'pred': x[1]})
+    if saving_manager.get_progress_dict()['pairs_idx'] != 'done':
+        #Prepare df to pass to scorer (mainly flattening the list of list of keys and pairs)
+        pairs_df = stats_df[['keys', 'pairs']].explode(['keys', 'pairs'])
+        pairs_df['pairs'] = pairs_df['pairs'].apply(lambda x: {'gold': x[0], 'pred': x[1]})
+        pairs_df = pairs_df['pairs']
+        pairs_df['idx'] = pairs_df.index
+        saving_manager.save_pairs_idx(pairs_df)
+    else:
+        pairs_df = saving_manager.load_pairs_idx()
     
     #Compute scores for each gold,pred pair
-    scores = scorer(pairs_df['pairs'])
+    scores = scorer(pairs_df)
 
     #Unpack scores
     for metric in scores.columns:
@@ -388,7 +392,7 @@ def summary_evaluation(path, save_path = None ,score_types=['bleu', 'rouge', 'be
 # ----------------------- 2 - Clinical note evaluation ----------------------- #
     
     
-def note_evaluation(model_name, path, score_types='all'): 
+def note_evaluation(model_name, path, save_path = None ,score_types='all'): 
     '''
     2 - Clinical note evaluation
     Given 2 models’ answers (randomly mixed), ask GPT-4 to pick which one is the best and compute an ELO score. 
@@ -407,6 +411,9 @@ def note_evaluation(model_name, path, score_types='all'):
     pairs = pd.Series([{'gold': gold, 'pred': pred} for gold, pred in zip(df['gold'], df['pred'])])
 
     # Compute scores for each pair of gold and pred clinical notes
+
+    eval_saving = EvalSaving(NOTE_EVALUATION_STEPS, path, save_path)
+
     scorer = Scorer(score_types)
     scores = scorer(pairs)
 

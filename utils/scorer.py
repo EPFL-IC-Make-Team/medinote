@@ -39,66 +39,101 @@ KEY_MISMATCH_TYPE = ['gold_none_keys', 'pred_none_keys', 'missing_keys']
 # ----------------------- Scoring functions (BLEU/ROUGE/BERT/GPT-4) ----------------------- #
 
 class Scorer(): 
-    def __init__(self, score_types='all', cot=False):
+    def __init__(self, saving_manager, score_types='all', cot=False):
         ''' 
         Initializes a scorer with a list of scoring modes to be used.
         Argument: 
             - score_types (str or list): list of scoring functions. Default: 'all' (all scoring functions)
             - cot (bool): whether to use Chain-of-Thought or not for GPT-4 evaluation (default: True)
         '''
+        self.saving_manager = saving_manager
         self.cot = cot
         self.score_types = ALL_SCORE_TYPES if score_types == 'all' else score_types
+        for score_type in self.score_types:
+            saving_manager.get_progress_dict()[score_type] = 'tbd'
+        
         #print('Initialized scorer with modes: ', list(self.score_types))
 
-    def __call__(self, pairs): 
+    def __call__(self, pairs_df): 
         '''
-        Given a list of dictionaries with gold and predicted pairs, 
+        Given a pandas dataframe with gold and predicted pairs and idxs, 
         returns a dataframe with the different computed scores.
 
         Example usage: 
             pairs = [{'gold': 'x', 'pred': 'y'}]
-            scorer = Scorer(['bleu', 'rouge', 'bert'])
+            scorer = Scorer(['bleu', 'bert'])
             scores = scorer(pairs)
             --> scores = dataframe(
                 {
                 'pairs':[{'gold': 'x', 'pred': 'y'}],
-                'bleu': [0.5], 
-                'rouge': [0.3], 
+                'bleu': [0.5],  
                 'bert': [0.7]
                     })
         '''
-        pairs_df = pd.DataFrame(pairs)
+
         if 'bleu' in self.score_types:
-            pairs_df['bleu'] = self.BLEU_scorer(pairs)['bleu']
+            pairs_df['bleu'] = self.BLEU_scorer(pairs_df)['bleu']
+
         if 'rouge' in self.score_types:
-            rouges = self.ROUGE_scorer(pairs)
+            rouges = self.ROUGE_scorer(pairs_df)
             for metric in rouges.keys(): #different rouge scores
                 pairs_df[metric] = rouges[metric]
         if 'bert' in self.score_types:
-            pairs_df['bert'] = self.BERT_scorer(pairs)['bert']
+            pairs_df['bert'] = self.BERT_scorer(pairs_df)['bert']
         if 'gpt_rank' in self.score_types:
-            pairs_df['gpt_rank'] = self.GPT_ranker(pairs)
+            pairs_df['gpt_rank'] = self.GPT_ranker(pairs_df)
         if 'gpt_score' in self.score_types:
-            pairs_df['gpt_score'] = self.GPT_scorer(pairs)
+            pairs_df['gpt_score'] = self.GPT_scorer(pairs_df)
 
         return pairs_df
     
     def BLEU_scorer(self, pairs):
         ''' BLEU score for summary evaluation (precision-oriented)'''
-        bleu_scores = {'bleu': [BLEU_SCORER.compute(predictions=[pair['pred']],
-                    references=[pair['gold']])['bleu'] 
-                    for pair in tqdm(pairs, total = len(pairs) ,desc="Computing BLEU scores")]}
-        return bleu_scores
+        status = self.saving_manager.get_progress_dict()['bleu']
+        if status == 'done':
+                print("BLEU scores already computed.")
+                return self.saving_manager.load_one_score('bleu')
+        
+        else :
+            if status == 'in progress':
+                print("Bleu score computation already in progress, resuming")
+                pairs_to_compute = self.saving_manager.get_one_score_to_compute('bleu', pairs)
+            else :
+                pairs_to_compute = pairs
+
+            bleu_scores = {'bleu': [BLEU_SCORER.compute(predictions=[pair['pred']],
+                references=[pair['gold']])['bleu'] 
+                for pair in tqdm(pairs_to_compute, total = len(pairs_to_compute) ,desc="Computing BLEU scores")]}
+
+            self.saving_manager.save_one_score('bleu', bleu_scores, done = True)
+
+            return bleu_scores
     
     def ROUGE_scorer(self, pairs):
         ''' ROUGE score for summary evaluation (recall-oriented)'''
-        rouges = [ROUGE_SCORER.compute(
-            predictions=[pair['pred']], references=[pair['gold']])
-            for pair in tqdm(pairs, total = len(pairs) ,desc="Computing ROUGE scores")]
+        status = self.saving_manager.get_progress_dict()['rouge']
+        if status == 'done':
+                print("ROUGE scores already computed.")
+                return self.saving_manager.load_one_score('rouge')
         
-        metrics = rouges[0].keys()
-        scores = {metric: [rouge[metric] for rouge in rouges] for metric in metrics} 
-        return scores
+        else :
+            if status == 'in progress':
+                print("ROUGE score computation already in progress, resuming")
+                pairs_to_compute = self.saving_manager.get_one_score_to_compute('rouge', pairs)
+            else :
+                pairs_to_compute = pairs
+
+            rouges = [ROUGE_SCORER.compute(
+                predictions=[pair['pred']], references=[pair['gold']])
+                for pair in tqdm(pairs_to_compute, total = len(pairs_to_compute) ,desc="Computing ROUGE scores")]
+            
+            metrics = rouges[0].keys()
+            scores = {metric: [rouge[metric] for rouge in rouges] for metric in metrics} 
+            
+            self.saving_manager.save_one_score('rouge', scores, done = True)
+
+            return scores
+        
 
     def BERT_scorer(self, pairs):
         '''BERT score for summary evaluation'''
@@ -255,7 +290,7 @@ class Scorer():
         return dataset['winner'].explode().to_list()
 
     def GPT_scorer(self, 
-                   pairs,
+                   pairs_df,
                    model_name='gpt-4-1106-preview',
                    chat=chat_gpt_4_turbo,
                    temperature=0.0,
@@ -281,11 +316,27 @@ class Scorer():
         '''
         print("GPT-4 scoring...")
         # Build prompts for GPT-4 from gold/pred pairs
-        dataset = pd.DataFrame({'pairs_list': [pairs[i: i+one_call_batch_size] for i in range(0, len(pairs), one_call_batch_size)]})
+
+        if self.saving_manager.get_progress_dict()['gpt_score'] == 'done':
+            print("GPT-4 scores already computed.")
+            return self.saving_manager.load_one_score('gpt_score')
+        else:
+            if self.saving_manager.get_progress_dict()['gpt_score'] == 'in progress':
+                print("GPT-4 score computation already in progress, resuming")
+                pairs_to_compute = self.saving_manager.get_one_score_to_compute('gpt_score', pairs_df)
+            else:
+                pairs_to_compute = pairs_df
+
+            scores = {'gpt_score': self.GPT_scorer_helper(pairs_to_compute, model_name, chat, temperature, max_tokens, one_call_batch_size)}
+            self.saving_manager.save_one_score('gpt_score', scores, done = True)
+
+        dataset = pd.DataFrame({'pairs_list': [pairs_to_compute[i: i+one_call_batch_size] for i in range(0, len(pairs_to_compute), one_call_batch_size)]})
 
         dataset[['similarity', 'explanation', 'model_name']] = [None , None, model_name]
         messages = []
+        idxs_grouped = []
         for _, pair_list in tqdm(dataset.iterrows(), total=dataset.shape[0], desc="Building score prompts"): 
+            idxs = [pair['idx'] for pair in pair_list['pairs_list']]
             golds = [pair['gold'] for pair in pair_list['pairs_list']]
             preds = [pair['pred'] for pair in pair_list['pairs_list']]
             switches = [np.random.choice([0, 1]) for _ in range(len(golds))]
@@ -300,9 +351,10 @@ class Scorer():
                 sys_prompt += "Directly respond with your final answers as follows: a list of dictionnaries [{'pair_number': i, 'similarity_score': <your answer>}]"
             
             usr_prompt = '\n'.join([f"(pair {i}, {optionA}, {optionB})" for i, (optionA, optionB) in enumerate(zip(optionsA, optionsB))])
+            idxs_grouped.append(idxs)
             messages.append(build_messages(sys_prompt, usr_prompt))
         
-        sub_batches = partition(dataframe = pd.DataFrame({'messages': messages}), max_token_per_partition=max_tokens,model = model_name)
+        sub_batches = partition(dataframe = pd.DataFrame({'idxs': idxs_grouped},{'messages': messages}), max_token_per_partition=max_tokens,model = model_name)
         # Generate answers by batches
         for i, (sub_batch, nb_tokens) in enumerate(sub_batches):
             print(f"Sub_batch {i+1}/{len(sub_batches)}: {sub_batch.shape[0]} calls, {nb_tokens} total tokens: {nb_tokens/1000 * 0.01}$")
@@ -317,6 +369,8 @@ class Scorer():
                 similarities = answers if not self.cot else [answer[0] for answer in answers]
                 dataset.loc[sub_batch.index,'similarity'] = pd.Series(similarities, index = sub_batch.index)
                 dataset.loc[sub_batch.index,'explanation'] = pd.Series(explanations, index = sub_batch.index)
+                self.saving_manager.save_one_score('gpt_score', {'gpt_score': dataset.loc[sub_batch.index][['idxs','similarity']].explode()}, done = False)
+
             except Exception as e:
                 print(e)
-        return dataset['similarity'].explode().to_list() #concateanate the similarities list of list into one list
+        return dataset[['idxs','similarity']].explode() #concateanate the similarities list of list into one df
