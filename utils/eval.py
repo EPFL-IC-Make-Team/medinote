@@ -27,6 +27,7 @@ from multielo import MultiElo
 import matplotlib.pyplot as plt
 import sys
 import os
+import json
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 
@@ -36,11 +37,11 @@ BLEU_SCORER = load("bleu")
 
 NONE_MATCH  = "None_Match"
 NO_SUCH_KEY = "no_such_key"
-NONE_FIELD = "None"
+NONE_FIELD = "None_"
 ALL_SCORE_TYPES = ['bleu', 'rouge', 'bert', 'gpt_rank', 'gpt_score']
 ROUGE_SUB_SCORES = ['rouge1', 'rouge2',	'rougeL', 'rougeLsum']
 COUNTS_TYPES = ['missing_keys_count', 'extra_keys_count', 'common_none_count',  
-                'gold_none_count', 'pred_none_count', 'common', 'total']
+                'gold_none_count', 'pred_none_count', 'common_non_none', 'all_keys_count']
 KEY_MISMATCH_TYPE = ['gold_none_keys', 'pred_none_keys', 'missing_keys']
 
 
@@ -52,6 +53,9 @@ os.makedirs(EVAL_DIR, exist_ok=True)
 
 def save_evaluation_input(output_filename, inference_sample,pred_data, gold_data = 'data'):
     eval_input = inference_sample[['idx', gold_data, pred_data]].dropna()
+    if gold_data == 'summary':
+        for key in [gold_data,pred_data]:
+            eval_input[key] = eval_input[key].apply(lambda x: json.loads(x.replace('\n', ' ')))
     eval_input = eval_input.rename(columns={gold_data: 'gold', pred_data: 'pred'})
     save_file(eval_input, os.path.join(EVAL_DIR, output_filename))
 
@@ -63,9 +67,18 @@ def build_evaluation_inputs(inference_sample_path):
     save_evaluation_input('gpt_note_eval_input.jsonl', inference_sample, 'pred_note-gpt')
 
 # ----------------------- 1 - Patient Summary evaluation ----------------------- #
-    
 
-def match_list(gold_list, pred_list, scorer_type='bert'):
+def matching_bert_scrorer(pairs):
+        '''BERT score for matching lists in the template'''
+        scores = {'bert': 
+            BERT_SCORER.compute(
+                predictions=[pair['pred'] for pair in pairs],
+                references=[pair['gold'] for pair in pairs],
+                lang='en')['f1']
+        }
+        return scores['bert'] 
+
+def match_list(gold_list, pred_list):
     '''
     Given two lists of (sub)-dictionaries, matches corresponding dictionaries by maximum score.
     Arguments: 
@@ -79,7 +92,6 @@ def match_list(gold_list, pred_list, scorer_type='bert'):
         - matched_pred (list of dict): pred_list reordered to match gold_list,
                         extended with empty dictionnaries if gold_list is longer 
     '''
-    scorer = Scorer([scorer_type])
 
     if len(gold_list) == 1 and len(pred_list) == 1:
         return gold_list, pred_list
@@ -98,7 +110,7 @@ def match_list(gold_list, pred_list, scorer_type='bert'):
     pred_strings = [", ".join(str(value) for value in pred_item.values() if value is not NONE_FIELD) for pred_item in pred_list]
     pairs = [{'gold' : gold_string, 'pred' : pred_string} for gold_string in gold_strings for pred_string in pred_strings]
     #print(f"total pairs: {len(pairs)}, all pairs: {pairs}")
-    scores = scorer(pairs)[scorer_type]
+    scores = matching_bert_scrorer(pairs)
     scores = np.array(scores).reshape(len(gold_list), len(pred_list))
     #print(f"scores: {scores}")
     min_items = min(len(gold_list), len(pred_list))
@@ -183,7 +195,7 @@ def get_counts_and_clean_dict(flattened_dict):
     '''
 
     counts = {key: 0 for key in COUNTS_TYPES}
-    counts['total']= len(flattened_dict)
+    counts['all_keys_count']= len(flattened_dict)
     clean_flat_dict = {}
     key_mismatches = {key : [] for key in KEY_MISMATCH_TYPE}
     for key, (gold, pred) in flattened_dict.items():
@@ -200,13 +212,12 @@ def get_counts_and_clean_dict(flattened_dict):
             if pred == NONE_FIELD:
                 key_mismatches['pred_none_keys'].append(key)
             else:
-                counts['common'] += 1
+                counts['common_non_none'] += 1
                 clean_flat_dict[key] = (gold, pred)
     counts['gold_none_count'] = len(key_mismatches['gold_none_keys'])
     counts['pred_none_count'] = len(key_mismatches['pred_none_keys'])
     counts['missing_keys_count'] = len(key_mismatches['missing_keys'])
 
-    print(clean_flat_dict)
     return counts, clean_flat_dict, key_mismatches
 
 def summary_statistics(golds, preds, saving_manager, score_types=['rouge', 'bleu', 'bert', 'gpt_score']):
@@ -242,7 +253,7 @@ def summary_statistics(golds, preds, saving_manager, score_types=['rouge', 'bleu
 
         saving_manager.flatten_and_match_dicts_update(stats_df)
     
-    elif saving_manager.get_progress_dict()['clean dicts and counts'] != 'done':
+    else:
         stats_df = saving_manager.load_flatten_and_match_dicts()
 
     # Compute counts and clean each flattened dict
@@ -266,11 +277,10 @@ def summary_statistics(golds, preds, saving_manager, score_types=['rouge', 'bleu
 
         saving_manager.clean_dicts_and_counts_update(stats_df)
 
-    elif saving_manager.get_progress_dict()['summary_statistics'] != 'done': 
+    else: 
         stats_df = saving_manager.load_clean_dicts_and_counts()
 
-    scorer = Scorer(score_types)
-
+    scorer = Scorer(saving_manager,score_types)
     stats_df['keys'] = stats_df['cleaned_flat_dicts'].apply(lambda x: list(x.keys()))
     stats_df['pairs'] = stats_df['cleaned_flat_dicts'].apply(lambda x: list(x.values()))
     stats_df.drop(['cleaned_flat_dicts'], axis=1, inplace=True)
@@ -279,14 +289,17 @@ def summary_statistics(golds, preds, saving_manager, score_types=['rouge', 'bleu
         #Prepare df to pass to scorer (mainly flattening the list of list of keys and pairs)
         pairs_df = stats_df[['keys', 'pairs']].explode(['keys', 'pairs'])
         pairs_df['pairs'] = pairs_df['pairs'].apply(lambda x: {'gold': x[0], 'pred': x[1]})
-        pairs_df = pairs_df['pairs']
-        pairs_df['idx'] = pairs_df.index
+        pairs_df = pairs_df['pairs'].to_frame()
+        pairs_df['idxs'] = range(pairs_df.shape[0])
         saving_manager.save_pairs_idx(pairs_df)
     else:
         pairs_df = saving_manager.load_pairs_idx()
     
     #Compute scores for each gold,pred pair
-    scores = scorer(pairs_df)
+    if saving_manager.get_progress_dict()['scores'] != 'done':
+        scores = scorer(pairs_df)
+    else:
+        scores = saving_manager.load_all_scores()
 
     #Unpack scores
     for metric in scores.columns:
@@ -299,7 +312,8 @@ def summary_statistics(golds, preds, saving_manager, score_types=['rouge', 'bleu
     #Unpack grouped scores
     for metric in grouped_scores.columns:
         stats_df[metric] = grouped_scores[metric]
-        
+
+    saving_manager.save_summary_statistics(stats_df)  
     return stats_df
 
 def summary_evaluation(path, save_path = None ,score_types=['bleu', 'rouge', 'bert', 'gpt_score']): 
@@ -342,7 +356,7 @@ def summary_evaluation(path, save_path = None ,score_types=['bleu', 'rouge', 'be
                                    score_types=score_types)
     else:
         stats = eval_saving.load_summary_statistics()
-    
+
     if 'rouge' in score_types:
         score_types.remove('rouge')
         score_types.extend(ROUGE_SUB_SCORES)
@@ -358,10 +372,9 @@ def summary_evaluation(path, save_path = None ,score_types=['bleu', 'rouge', 'be
         eval_saving.save_eval_by_sample(dataset)
     else:
         dataset = eval_saving.load_eval_by_sample()
-    
+
     # Compute average matching scores accross all patient summaries for each metric for each field
     # As well as average counts of missing, none_pred, none_gold
-    
     if eval_saving.get_progress_dict()['eval_by_key'] != 'done':
         exploding1 = ['keys'] + score_types
         score_by_keys = stats[exploding1].explode(exploding1)

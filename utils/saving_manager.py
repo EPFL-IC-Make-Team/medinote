@@ -20,7 +20,7 @@ class EvalSaving():
         else:
             os.makedirs(save_path)
             print("Creating Evaluation directory and progress monitoring")
-            self.progress_dict = steps
+            self.progress_dict = steps.copy()
             self.progress_dict['create eval directory'] = 'done'
             with open(f"{save_path}/progress", 'w') as f:
                 json.dump(self.progress_dict, f)
@@ -35,13 +35,13 @@ class EvalSaving():
     def flatten_and_match_dicts_update(self, df):
         df.to_json(f"{self.save_path}/flatten_and_match_dicts.jsonl", orient='records', lines=True)
         self.progress_dict['flatten and match dicts'] = 'done'
-        self.save_progress_dict['summary_statistics'] = 'in progress'
+        self.progress_dict['summary_statistics'] = 'in progress'
         self.save_progress_dict()
     
     def load_flatten_and_match_dicts(self):
         return pd.read_json(f"{self.save_path}/flatten_and_match_dicts.jsonl", orient='records', lines=True)
 
-    def clean_dicts_and_counts_update(self, df, delete_flat = True):
+    def clean_dicts_and_counts_update(self, df, delete_flat = False):
         df.to_json(f"{self.save_path}/clean_dicts_and_counts.jsonl", orient='records', lines=True)
         self.progress_dict['clean dicts and counts'] = 'done'
         if delete_flat:
@@ -51,7 +51,7 @@ class EvalSaving():
     def load_clean_dicts_and_counts(self):
         return pd.read_json(f"{self.save_path}/clean_dicts_and_counts.jsonl", orient='records', lines=True)
 
-    def save_summary_statistics(self, df, delete_clean = True):
+    def save_summary_statistics(self, df, delete_clean = False):
         df.to_json(f"{self.save_path}/summary_statistics.jsonl", orient='records', lines=True)
         self.progress_dict['summary_statistics'] = 'done'
         if delete_clean:
@@ -88,7 +88,7 @@ class EvalSaving():
         return pd.read_json(f"{self.save_path}/pairs_to_score.jsonl", orient='records', lines=True)
 
     def save_one_score(self, batch_df, score_name, done = False):
-        with open(f"save_path_{score_name}.jsonl", 'a') as f:
+        with open(f"{self.save_path}/{score_name}.jsonl", 'a') as f:
             f.write(batch_df.to_json(orient='records', lines=True))
         if done:
             self.progress_dict[score_name] = 'done'
@@ -102,7 +102,7 @@ class EvalSaving():
 
     def get_one_score_to_compute(self, score_name, pairs):
         computed = self.load_one_score(score_name)
-        to_compute = pairs[~pairs['idx'].isin(computed['idx'])]
+        to_compute = pairs[~pairs['idxs'].isin(computed['idxs'])]
         return to_compute
             
     def save_all_scores(self, df):

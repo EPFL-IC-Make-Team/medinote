@@ -50,7 +50,7 @@ class Scorer():
         self.cot = cot
         self.score_types = ALL_SCORE_TYPES if score_types == 'all' else score_types
         for score_type in self.score_types:
-            saving_manager.get_progress_dict()[score_type] = 'tbd'
+            saving_manager.get_progress_dict()[score_type] = self.saving_manager.get_progress_dict().get(score_type, 'tbd')
         
         #print('Initialized scorer with modes: ', list(self.score_types))
 
@@ -70,20 +70,22 @@ class Scorer():
                 'bert': [0.7]
                     })
         '''
-
         if 'bleu' in self.score_types:
-            pairs_df['bleu'] = self.BLEU_scorer(pairs_df)['bleu']
+            pairs_df['bleu'] = self.BLEU_scorer(pairs_df['pairs'])['bleu']
 
         if 'rouge' in self.score_types:
-            rouges = self.ROUGE_scorer(pairs_df)
+            rouges = self.ROUGE_scorer(pairs_df['pairs'])
             for metric in rouges.keys(): #different rouge scores
                 pairs_df[metric] = rouges[metric]
         if 'bert' in self.score_types:
-            pairs_df['bert'] = self.BERT_scorer(pairs_df)['bert']
+            pairs_df['bert'] = self.BERT_scorer(pairs_df['pairs'])['bert']
+
         if 'gpt_rank' in self.score_types:
-            pairs_df['gpt_rank'] = self.GPT_ranker(pairs_df)
+            pairs_df['gpt_rank'] = self.GPT_ranker(pairs_df[['idxs','pairs']])
         if 'gpt_score' in self.score_types:
-            pairs_df['gpt_score'] = self.GPT_scorer(pairs_df)
+            pairs_df['gpt_score'] = self.GPT_scorer(pairs_df[['idxs','pairs']])
+
+        self.saving_manager.save_all_scores(pairs_df)
 
         return pairs_df
     
@@ -104,9 +106,9 @@ class Scorer():
             bleu_scores = {'bleu': [BLEU_SCORER.compute(predictions=[pair['pred']],
                 references=[pair['gold']])['bleu'] 
                 for pair in tqdm(pairs_to_compute, total = len(pairs_to_compute) ,desc="Computing BLEU scores")]}
-
-            self.saving_manager.save_one_score('bleu', bleu_scores, done = True)
-
+            
+            self.saving_manager.save_one_score(pd.DataFrame(bleu_scores),'bleu',done = True)
+            
             return bleu_scores
     
     def ROUGE_scorer(self, pairs):
@@ -130,24 +132,32 @@ class Scorer():
             metrics = rouges[0].keys()
             scores = {metric: [rouge[metric] for rouge in rouges] for metric in metrics} 
             
-            self.saving_manager.save_one_score('rouge', scores, done = True)
+            self.saving_manager.save_one_score(pd.DataFrame(scores),'rouge', done = True)
 
             return scores
-        
 
     def BERT_scorer(self, pairs):
         '''BERT score for summary evaluation'''
-        if len(pairs) > 10:
-            print("Computing BERTscores...")
-        scores = {'bert': 
-            BERT_SCORER.compute(
-                predictions=[pair['pred'] for pair in pairs],
-                references=[pair['gold'] for pair in pairs],
-                lang='en')['f1']
-        }
-        if len(pairs) > 10:
-            print('BERTscores computed.')
-        return scores
+        print("Computing BERTscores...")
+        status = self.saving_manager.get_progress_dict()['bert']
+        if status == 'done':
+                print("BERTscores already computed.")
+                return self.saving_manager.load_one_score('bert')
+        else :
+            if status == 'in progress':
+                print("BERTscores computation already in progress, resuming")
+                pairs_to_compute = self.saving_manager.get_one_score_to_compute('bert', pairs)
+            else :
+                pairs_to_compute = pairs
+            bert_scores = {'bert': 
+                BERT_SCORER.compute(
+                    predictions=[pair['pred'] for pair in pairs_to_compute],
+                    references=[pair['gold'] for pair in pairs_to_compute],
+                    lang='en')['f1']
+                }
+            self.saving_manager.save_one_score(pd.DataFrame(bert_scores),'bert', done = True)
+            print("BERTscores computed.")
+            return bert_scores
     
     def ranker_formatting(self, answer):
         """
@@ -327,18 +337,14 @@ class Scorer():
             else:
                 pairs_to_compute = pairs_df
 
-            scores = {'gpt_score': self.GPT_scorer_helper(pairs_to_compute, model_name, chat, temperature, max_tokens, one_call_batch_size)}
-            self.saving_manager.save_one_score('gpt_score', scores, done = True)
+        dataset = pairs_to_compute.groupby(pairs_to_compute.index // one_call_batch_size).agg(lambda x: x.tolist())
 
-        dataset = pd.DataFrame({'pairs_list': [pairs_to_compute[i: i+one_call_batch_size] for i in range(0, len(pairs_to_compute), one_call_batch_size)]})
-
-        dataset[['similarity', 'explanation', 'model_name']] = [None , None, model_name]
         messages = []
         idxs_grouped = []
         for _, pair_list in tqdm(dataset.iterrows(), total=dataset.shape[0], desc="Building score prompts"): 
-            idxs = [pair['idx'] for pair in pair_list['pairs_list']]
-            golds = [pair['gold'] for pair in pair_list['pairs_list']]
-            preds = [pair['pred'] for pair in pair_list['pairs_list']]
+            idxs = pair_list['idxs']
+            golds = [pair['gold'] for pair in pair_list['pairs']]
+            preds = [pair['pred'] for pair in pair_list['pairs']]
             switches = [np.random.choice([0, 1]) for _ in range(len(golds))]
             optionsA = [gold if switch == 0 else pred for gold, pred, switch in zip(golds, preds, switches)]
             optionsB = [gold if switch == 1 else pred for gold, pred, switch in zip(golds, preds, switches)]
@@ -353,24 +359,30 @@ class Scorer():
             usr_prompt = '\n'.join([f"(pair {i}, {optionA}, {optionB})" for i, (optionA, optionB) in enumerate(zip(optionsA, optionsB))])
             idxs_grouped.append(idxs)
             messages.append(build_messages(sys_prompt, usr_prompt))
-        
-        sub_batches = partition(dataframe = pd.DataFrame({'idxs': idxs_grouped},{'messages': messages}), max_token_per_partition=max_tokens,model = model_name)
+        sub_batches = partition(dataframe = pd.DataFrame({'idxs': idxs_grouped, 'messages': messages}), max_token_per_partition=max_tokens,model = model_name)
         # Generate answers by batches
+
+        res = pd.DataFrame({'idxs': [], 'similarity': [], 'explanations': []})
+        
+
         for i, (sub_batch, nb_tokens) in enumerate(sub_batches):
             print(f"Sub_batch {i+1}/{len(sub_batches)}: {sub_batch.shape[0]} calls, {nb_tokens} total tokens: {nb_tokens/1000 * 0.01}$")
-            try:
-                answers = generate_answers(
-                    messages_list = sub_batch['messages'].tolist(),
-                    formatting=self.scorer_formatting,
-                    chat=chat,
-                    temperature=temperature
-                ) # answer is list of list
-                explanations =  [None] * sub_batch.shape[0] if not self.cot else [answer[1] for answer in answers]
-                similarities = answers if not self.cot else [answer[0] for answer in answers]
-                dataset.loc[sub_batch.index,'similarity'] = pd.Series(similarities, index = sub_batch.index)
-                dataset.loc[sub_batch.index,'explanation'] = pd.Series(explanations, index = sub_batch.index)
-                self.saving_manager.save_one_score('gpt_score', {'gpt_score': dataset.loc[sub_batch.index][['idxs','similarity']].explode()}, done = False)
+            answers = generate_answers(
+                messages_list = sub_batch['messages'].tolist(),
+                formatting=self.scorer_formatting,
+                chat=chat,
+                temperature=temperature
+            ) # answer is list of list
 
-            except Exception as e:
-                print(e)
-        return dataset[['idxs','similarity']].explode() #concateanate the similarities list of list into one df
+            explanations =  [[None]* len(answer) if ~self.cot else answer[1] for answer in answers]
+            similarities = answers if not self.cot else [answer[0] for answer in answers]
+            sub_batch_res = pd.DataFrame({'idxs': sub_batch['idxs'],
+                                            'similarity': similarities, 
+                                            'explanations': explanations}).explode(['idxs','similarity','explanations'])
+            
+            res = pd.concat([res, sub_batch_res], ignore_index=True)
+
+            self.saving_manager.save_one_score(sub_batch_res, 'gpt_score', done = False)
+
+        self.saving_manager.save_one_score(res, 'gpt_score', done = True)
+        return res['similarity']
