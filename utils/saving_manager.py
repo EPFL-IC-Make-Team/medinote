@@ -98,12 +98,6 @@ class EvalSaving():
     
     def load_one_score(self, score_name):
         return pd.read_json(f"{self.save_path}/{score_name}.jsonl", orient='records', lines=True)
-    
-
-    def get_one_score_to_compute(self, score_name, pairs):
-        computed = self.load_one_score(score_name)
-        to_compute = pairs[~pairs['idxs'].isin(computed['idxs'])]
-        return to_compute
             
     def save_all_scores(self, df):
         df.to_json(f"{self.save_path}/_scores.jsonl", orient='records', lines=True)

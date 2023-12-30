@@ -160,10 +160,11 @@ async def dispatch_openai_requests(
             formatting = formatting,
             temperature = temperature)
         nb_done += 1
+        print(".", end = "")
         res_list.append(res)
         if nb_done % 20 == 0: #informative outputs
             print(nb_done)
-            save_to_pickle("safety_save.pkl", res_list)
+            save_to_pickle("safety_save.pkl", res_list)  
         return res 
         
     async_responses = [one_call(x) for x in messages_list] #multiple calls
@@ -194,6 +195,7 @@ def generate_answers(messages_list: list[List[dict]],
             formatting=formatting, 
             chat=chat, 
             temperature=temperature))
+    print()
     return(answers)
 
 def num_tokens_from_messages(messages, model):

@@ -18,6 +18,7 @@ import numpy as np
 from evaluate import load
 import sys
 import os
+import time
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 
@@ -304,8 +305,8 @@ class Scorer():
                    model_name='gpt-4-1106-preview',
                    chat=chat_gpt_4_turbo,
                    temperature=0.0,
-                   max_tokens = 300,
-                   one_call_batch_size=5):
+                   max_tokens = 5000,
+                   one_call_batch_size=3):
         ''' 
         Given a model’s answer and GPT-4' answer (silver label), 
         ask GPT-4 with CoT to compute the similarity between the two answers on a scale of 1 to 10. 
@@ -325,20 +326,22 @@ class Scorer():
         TODO: Save the explanations and scores in a separate file.
         '''
         print("GPT-4 scoring...")
-        # Build prompts for GPT-4 from gold/pred pairs
-
+        
+        res = pd.DataFrame({'idxs': [], 'similarity': [], 'explanations': []})
         if self.saving_manager.get_progress_dict()['gpt_score'] == 'done':
             print("GPT-4 scores already computed.")
             return self.saving_manager.load_one_score('gpt_score')
         else:
             if self.saving_manager.get_progress_dict()['gpt_score'] == 'in progress':
                 print("GPT-4 score computation already in progress, resuming")
-                pairs_to_compute = self.saving_manager.get_one_score_to_compute('gpt_score', pairs_df)
+                computed = self.saving_manager.load_one_score('gpt_score')
+                pairs_to_compute = pairs_df[~pairs_df['idxs'].isin(computed['idxs'].tolist())]
+                res = pd.concat([res, computed], ignore_index=True)
             else:
                 pairs_to_compute = pairs_df
 
-        dataset = pairs_to_compute.groupby(pairs_to_compute.index // one_call_batch_size).agg(lambda x: x.tolist())
-
+        dataset = pairs_to_compute.groupby(pairs_to_compute['idxs'] // one_call_batch_size).agg(lambda x: x.tolist())
+        # Build prompts for GPT-4 from gold/pred pairs
         messages = []
         idxs_grouped = []
         for _, pair_list in tqdm(dataset.iterrows(), total=dataset.shape[0], desc="Building score prompts"): 
@@ -361,12 +364,11 @@ class Scorer():
             messages.append(build_messages(sys_prompt, usr_prompt))
         sub_batches = partition(dataframe = pd.DataFrame({'idxs': idxs_grouped, 'messages': messages}), max_token_per_partition=max_tokens,model = model_name)
         # Generate answers by batches
-
-        res = pd.DataFrame({'idxs': [], 'similarity': [], 'explanations': []})
         
 
         for i, (sub_batch, nb_tokens) in enumerate(sub_batches):
             print(f"Sub_batch {i+1}/{len(sub_batches)}: {sub_batch.shape[0]} calls, {nb_tokens} total tokens: {nb_tokens/1000 * 0.01}$")
+            start_time = time.time()
             answers = generate_answers(
                 messages_list = sub_batch['messages'].tolist(),
                 formatting=self.scorer_formatting,
@@ -383,6 +385,15 @@ class Scorer():
             res = pd.concat([res, sub_batch_res], ignore_index=True)
 
             self.saving_manager.save_one_score(sub_batch_res, 'gpt_score', done = False)
+            delete_pickle_file("safety_save.pkl")
+            
+            end_time = time.time()
+            time_taken = (end_time - start_time)
+            breaktime = max(int(20 - time_taken) + 2, 5) #time we wait before calling the api again
+            print(f"\nBreak for {breaktime} seconds.")
+            time.sleep(breaktime)
+            print("End of break.")
+            
 
         self.saving_manager.save_one_score(res, 'gpt_score', done = True)
         return res['similarity']

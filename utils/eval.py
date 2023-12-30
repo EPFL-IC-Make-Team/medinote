@@ -37,7 +37,7 @@ BLEU_SCORER = load("bleu")
 
 NONE_MATCH  = "None_Match"
 NO_SUCH_KEY = "no_such_key"
-NONE_FIELD = "None_"
+NONE_FIELD = "None"
 ALL_SCORE_TYPES = ['bleu', 'rouge', 'bert', 'gpt_rank', 'gpt_score']
 ROUGE_SUB_SCORES = ['rouge1', 'rouge2',	'rougeL', 'rougeLsum']
 COUNTS_TYPES = ['missing_keys_count', 'extra_keys_count', 'common_none_count',  
@@ -201,9 +201,9 @@ def get_counts_and_clean_dict(flattened_dict):
     for key, (gold, pred) in flattened_dict.items():
         if gold == NO_SUCH_KEY:
             counts['extra_keys_count'] += 1
-        if pred == NO_SUCH_KEY:
+        elif pred == NO_SUCH_KEY:
             key_mismatches['missing_keys'].append(key)
-        if gold == NONE_FIELD:
+        elif gold == NONE_FIELD:
             if pred == NONE_FIELD:
                 counts['common_none_count'] += 1
             else:
@@ -212,11 +212,11 @@ def get_counts_and_clean_dict(flattened_dict):
             if pred == NONE_FIELD:
                 key_mismatches['pred_none_keys'].append(key)
             else:
-                counts['common_non_none'] += 1
                 clean_flat_dict[key] = (gold, pred)
     counts['gold_none_count'] = len(key_mismatches['gold_none_keys'])
     counts['pred_none_count'] = len(key_mismatches['pred_none_keys'])
     counts['missing_keys_count'] = len(key_mismatches['missing_keys'])
+    counts['common_non_none'] = len(clean_flat_dict)
 
     return counts, clean_flat_dict, key_mismatches
 
@@ -290,6 +290,7 @@ def summary_statistics(golds, preds, saving_manager, score_types=['rouge', 'bleu
         pairs_df = stats_df[['keys', 'pairs']].explode(['keys', 'pairs'])
         pairs_df['pairs'] = pairs_df['pairs'].apply(lambda x: {'gold': x[0], 'pred': x[1]})
         pairs_df = pairs_df['pairs'].to_frame()
+        pairs_df['batch_idx'] = pairs_df.index
         pairs_df['idxs'] = range(pairs_df.shape[0])
         saving_manager.save_pairs_idx(pairs_df)
     else:
@@ -307,7 +308,7 @@ def summary_statistics(golds, preds, saving_manager, score_types=['rouge', 'bleu
 
     #Group scores by dictionaries as list of scores (mainly unlfattening the list of scores
         #as a list of list of scores)
-    grouped_scores = pairs_df.groupby(pairs_df.index).agg(lambda x: list(x))
+    grouped_scores = pairs_df.groupby(pairs_df['batch_idx']).agg(lambda x: list(x))
 
     #Unpack grouped scores
     for metric in grouped_scores.columns:
@@ -339,7 +340,6 @@ def summary_evaluation(path, save_path = None ,score_types=['bleu', 'rouge', 'be
                     computed accros all patient summaries for this key 
                     e.g. "proprtion of pred summaries where this key is mssing"
     '''
-
     if score_types == 'all' or 'gpt_rank' in score_types:
         raise ValueError("GPT-4 ranking makes no sense for summary evaluation. \
                          Please choose in 'bleu', 'rouge', 'bert' and 'gpt_score'.")
@@ -357,14 +357,16 @@ def summary_evaluation(path, save_path = None ,score_types=['bleu', 'rouge', 'be
     else:
         stats = eval_saving.load_summary_statistics()
 
+
+    new_score_types = score_types.copy()
     if 'rouge' in score_types:
-        score_types.remove('rouge')
-        score_types.extend(ROUGE_SUB_SCORES)
+        new_score_types.remove('rouge')
+        new_score_types.extend(ROUGE_SUB_SCORES)
 
     # Compute average matching scores accrosss all keys for each metric for each patient summary
     if eval_saving.get_progress_dict()['eval_by_sample'] != 'done':
 
-        for metric in score_types:
+        for metric in new_score_types:
             dataset[f"mean_{metric}"] = stats[metric].apply(lambda x: np.mean(x))
         
         for count_type in COUNTS_TYPES:
@@ -376,7 +378,7 @@ def summary_evaluation(path, save_path = None ,score_types=['bleu', 'rouge', 'be
     # Compute average matching scores accross all patient summaries for each metric for each field
     # As well as average counts of missing, none_pred, none_gold
     if eval_saving.get_progress_dict()['eval_by_key'] != 'done':
-        exploding1 = ['keys'] + score_types
+        exploding1 = ['keys'] + new_score_types
         score_by_keys = stats[exploding1].explode(exploding1)
         score_by_keys = score_by_keys.groupby(['keys']).agg('mean')
         N = dataset.shape[0]
