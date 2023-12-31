@@ -49,6 +49,8 @@ INSTRUCTIONS = {
     ]
 }
 
+# Use beam search for generator and direct
+
 PARAMETERS = {
     'summarizer' : {
         'max_length': 2048,
@@ -62,10 +64,12 @@ PARAMETERS = {
     'generator' : {
         'max_length': 2048, 
         'do_sample': True,
-        'num_beams': 1,
+        'num_beams': 3,
         'top_p': 0.95,
         'num_return_sequences': 1,
         'return_full_text': False, 
+        
+
     },
     'direct' : {
         'max_length': 2048,
@@ -246,12 +250,12 @@ def infer(
         stops = tokenizer(stoppers, add_special_tokens=False)['input_ids']
         stopping_criteria = StoppingCriteriaList([StoppingCriteriaSub(stops=stops)])
     pipe = pipeline("text-generation", 
-                            model=model, 
-                            tokenizer=tokenizer, 
-                            eos_token_id=tokenizer.eos_token_id, 
-                            pad_token_id=tokenizer.eos_token_id,
-                            stopping_criteria=stopping_criteria,
-                            **gen_parameters)
+                    model=model, 
+                    tokenizer=tokenizer, 
+                    eos_token_id=tokenizer.eos_token_id, 
+                    pad_token_id=tokenizer.eos_token_id,
+                    stopping_criteria=stopping_criteria,
+                    **gen_parameters)
 
     # Load data
     if output_path and os.path.exists(output_path):
