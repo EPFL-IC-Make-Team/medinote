@@ -214,7 +214,7 @@ class Scorer():
             return int_answers
 
     def GPT_ranker(self, 
-                   pairs,
+                   pairs_df,
                    model_name='gpt-4-1106-preview',
                    chat=chat_gpt_4_turbo,
                    max_tokens = 300,
@@ -238,19 +238,33 @@ class Scorer():
         '''
         print("GPT-4 ranking...")
 
+        res = pd.DataFrame({'idxs': [], 'similarity': [], 'explanations': []})
+        if self.saving_manager.get_progress_dict()['gpt_rank'] == 'done':
+            print("GPT-4 ranks already computed.")
+            return self.saving_manager.load_one_score('gpt_rank')['winner']
+        else:
+            if self.saving_manager.get_progress_dict()['gpt_rank'] == 'in progress':
+                print("GPT-4 score computation already in progress, resuming")
+                computed = self.saving_manager.load_one_score('gpt_rank')
+                pairs_to_compute = pairs_df[~pairs_df['idxs'].isin(computed['idxs'].tolist())]
+                res = pd.concat([res, computed], ignore_index=True)
+            else:
+                pairs_to_compute = pairs_df
+
         #Builds the batch of pairs to evaluate as one single call
-        dataset = pd.DataFrame({'pairs_list': [pairs[i: i+one_call_batch_size] for i in range(0, len(pairs), one_call_batch_size)]})
-
-        dataset[['winner', 'explanation', 'switch', 'model_name']] = [None, None, None, model_name]
-
+        dataset = pairs_to_compute.groupby(pairs_to_compute['idxs'] // one_call_batch_size).agg(lambda x: x.tolist())
+        dataset['switches'] = None
         messages = []
+        idxs_grouped = []
+
         for i, pair_list in tqdm(dataset.iterrows(), total=dataset.shape[0], desc="Building ranking prompts"): 
-            golds = [pair['gold'] for pair in pair_list['pairs_list']]
-            preds = [pair['pred'] for pair in pair_list['pairs_list']]
-            switches = [np.random.choice([0, 1]) for _ in range(len(golds))]
+            idxs = pair_list['idxs']
+            noteAs = [pair['noteA'] for pair in pair_list['pairs']]
+            noteBs = [pair['noteB'] for pair in pair_list['pairs']]
+            switches = [np.random.choice([0, 1]) for _ in range(len(noteAs))]
             #We randomly mix gold and pred to avoid bias
-            optionsA = [gold if switch == 0 else pred for gold, pred, switch in zip(golds, preds, switches)]
-            optionsB = [gold if switch == 1 else pred for gold, pred, switch in zip(golds, preds, switches)]
+            optionsA = [gold if switch == 0 else pred for gold, pred, switch in zip(noteAs, noteBs, switches)]
+            optionsB = [gold if switch == 1 else pred for gold, pred, switch in zip(noteAs, noteBs, switches)]
             
             sys_prompt = f"For each pair of clinical notes (pair i, NoteA, NoteB) you are given, compare them and rank which one is of higher quality. "
             if self.cot:
@@ -260,45 +274,65 @@ class Scorer():
                 sys_prompt += "Directly respond with your final answers as follows: a list of dictionnaries [{'pair_number': i, 'higher_quality_note': <your answer>}\n"
             
             sys_prompt += "Your answer should be 'NoteA' if NoteA has better quality, 'NoteB' if NoteB has better quality, or 'tie' if they have the same quality."
-            usr_prompt = '\n'.join([f"(pair {i}, {optionA}, {optionB})" for i, (optionA, optionB) in enumerate(zip(optionsA, optionsB))])
-            
+            usr_prompt = '\n'.join([f"(pair {j}, {optionA}, {optionB})" for j, (optionA, optionB) in enumerate(zip(optionsA, optionsB))])
+            idxs_grouped.append(idxs)
             messages.append(build_messages(sys_prompt, usr_prompt))
-            dataset.at[i,'switch'] = switches
+            dataset.at[i, 'switches'] = switches
 
         # Builds batch of calls so that each call has a total number of tokens less than max_tokens
-        sub_batches = partition(dataframe = pd.concat([pd.DataFrame({'messages': messages}),dataset['switch']], axis =1), max_token_per_partition=max_tokens,model = model_name)
-
+        sub_batches = partition(dataframe = pd.concat([pd.DataFrame({'idxs': idxs_grouped, 'messages': messages}),dataset['switches']], axis =1),
+                                max_token_per_partition=max_tokens,
+                                model = model_name)
+        
         # Generate answers by batches
         for i, (sub_batch, nb_tokens) in enumerate(sub_batches):
             print(f"Sub_batch {i+1}/{len(sub_batches)}: {sub_batch.shape[0]} calls, {nb_tokens} total tokens: {nb_tokens/1000 * 0.01}$")
-            try:
-                answers = generate_answers(
-                    messages_list = sub_batch['messages'].tolist(),
-                    formatting= self.ranker_formatting,
-                    chat=chat,
-                    temperature=temperature
-                ) # answer is list of list
+            if os.path.exists("safety_save.pkl"):
+                delete_pickle_file("safety_save.pkl") #in-batch resume not possible due to swtiches
+            
+            start_time = time.time()
+            answers = generate_answers(
+                messages_list = sub_batch['messages'].tolist(),
+                formatting= self.ranker_formatting,
+                chat=chat,
+                temperature=temperature
+            ) # answer is list of list
 
-                if self.cot:
-                    explanations = [answer[1] for answer in answers]
-                    winners = [['tie' if (answer == 'tie') else
-                        'gold' if (answer == 'NoteA' and switch == 0) or (answer == 'NoteB' and switch == 1) else
-                        'pred' 
-                        for answer,switch in zip(answer_list[0], switches)]
-                        for answer_list, switches in zip(answers, sub_batch['switch'].tolist())]
+            if self.cot:
+                explanations = [answer[1] for answer in answers]
+                winners = [['tie' if (answer == 'tie') else
+                    'gold' if (answer == 'NoteA' and switch == 0) or (answer == 'NoteB' and switch == 1) else
+                    'pred' 
+                    for answer,switch in zip(answer_list[0], switches)]
+                    for answer_list, switches in zip(answers, sub_batch['switches'].tolist())]
 
-                else:
-                    explanations =  [None] * sub_batch.shape[0]
-                    winners = [['tie' if (answer == 'tie') else
-                            'gold' if (answer == 'NoteA' and switch == 0) or (answer == 'NoteB' and switch == 1) else
-                            'pred' 
-                            for answer,switch in zip(answer_list, switches)]
-                            for answer_list, switches in zip(answers, sub_batch['switch'].tolist())]
-                dataset.loc[sub_batch.index,'winner'] = pd.Series(winners, index = sub_batch.index)
-                dataset.loc[sub_batch.index,'explanation'] = pd.Series(explanations, index = sub_batch.index)
-            except Exception as e:
-                print(e)
-        return dataset['winner'].explode().to_list()
+            else:
+                #print(sub_batch['switches'].tolist())
+                #print(answers)
+                #print(zip(answers, sub_batch['switches'].tolist()))
+                explanations =  [[None] * len(answer) for answer in answers]
+                winners = [['tie' if (answer == 'tie') else
+                        'NoteA' if (answer == 'NoteA' and switch == 0) or (answer == 'NoteB' and switch == 1) else
+                        'NoteB' 
+                        for answer,switch in zip(answer_list, switches)]
+                        for answer_list, switches in zip(answers, sub_batch['switches'].tolist())]
+            sub_batch_res = pd.DataFrame({'idxs': sub_batch['idxs'],
+                                            'winner': winners, 
+                                            'explanation': explanations}).explode(['idxs','winner','explanation'])
+            res = pd.concat([res, sub_batch_res], ignore_index=True)
+
+            self.saving_manager.save_one_score(sub_batch_res, 'gpt_rank', done = False)
+            delete_pickle_file("safety_save.pkl")
+            
+            end_time = time.time()
+            time_taken = (end_time - start_time)
+            breaktime = max(int(20 - time_taken) + 2, 5) #time we wait before calling the api again
+            print(f"\nBreak for {breaktime} seconds.")
+            time.sleep(breaktime)
+            print("End of break.")
+
+        self.saving_manager.save_one_score(res, 'gpt_rank', done = True)
+        return res['winner']
 
     def GPT_scorer(self, 
                    pairs_df,
@@ -330,7 +364,7 @@ class Scorer():
         res = pd.DataFrame({'idxs': [], 'similarity': [], 'explanations': []})
         if self.saving_manager.get_progress_dict()['gpt_score'] == 'done':
             print("GPT-4 scores already computed.")
-            return self.saving_manager.load_one_score('gpt_score')
+            return self.saving_manager.load_one_score('gpt_score')['similarity']
         else:
             if self.saving_manager.get_progress_dict()['gpt_score'] == 'in progress':
                 print("GPT-4 score computation already in progress, resuming")
@@ -348,10 +382,11 @@ class Scorer():
             idxs = pair_list['idxs']
             golds = [pair['gold'] for pair in pair_list['pairs']]
             preds = [pair['pred'] for pair in pair_list['pairs']]
+            #We randomly mix gold and pred to avoid bias
             switches = [np.random.choice([0, 1]) for _ in range(len(golds))]
             optionsA = [gold if switch == 0 else pred for gold, pred, switch in zip(golds, preds, switches)]
             optionsB = [gold if switch == 1 else pred for gold, pred, switch in zip(golds, preds, switches)]
-            sys_prompt = f"For each pair of notes (pair i, NoteA, NoteB) you are given, compare them and rate how similar they are to each other on a scale of 1 to 10. "
+            sys_prompt = f"For each pair of notes (pair i, NoteA, NoteB) you are given, compare them and rate how similar their content is of 1 to 10. Pay attention to details and be strict with small but meaningfull content differences"
             
             if self.cot:
                 sys_prompt += "Explain in one sentence your reasoning in comparing the two notes, then select your final answer.\n \
@@ -368,6 +403,7 @@ class Scorer():
 
         for i, (sub_batch, nb_tokens) in enumerate(sub_batches):
             print(f"Sub_batch {i+1}/{len(sub_batches)}: {sub_batch.shape[0]} calls, {nb_tokens} total tokens: {nb_tokens/1000 * 0.01}$")
+            
             start_time = time.time()
             answers = generate_answers(
                 messages_list = sub_batch['messages'].tolist(),
@@ -375,6 +411,8 @@ class Scorer():
                 chat=chat,
                 temperature=temperature
             ) # answer is list of list
+
+            
 
             explanations =  [[None]* len(answer) if ~self.cot else answer[1] for answer in answers]
             similarities = answers if not self.cot else [answer[0] for answer in answers]

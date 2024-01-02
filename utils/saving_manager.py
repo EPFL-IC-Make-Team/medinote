@@ -3,7 +3,8 @@ import json
 import pandas as pd
 
 SUMMARY_EVALUATION_STEPS = {'create eval directory' : 'tbd', 'flatten and match dicts' : 'tbd', 'clean dicts and counts' : 'tbd', 'summary_statistics' : 'tbd', 'scores' : 'tbd', 'pairs_idx' : 'tbd' ,'eval_by_sample' : 'tbd', 'eval_by_key' : 'tbd'}
-NOTE_EVALUATION_STEPS = {'create eval directory' : 'tbd'}
+NOTE_EVALUATION_STEPS = {'create eval directory' : 'tbd', 'scores' : 'tbd'}
+ELO_RANKING_STEPS = {'create eval directory' : 'tbd', 'build_sub_batch' : 'tbd', 'scores' : 'tbd', 'compute elos' : 'tbd' }
 
 class EvalSaving():
     def __init__(self, steps ,path, save_path = None):
@@ -106,3 +107,19 @@ class EvalSaving():
     
     def load_all_scores(self):
         return pd.read_json(f"{self.save_path}/_scores.jsonl", orient='records', lines=True)
+
+    def save_sub_batch(self, df):
+        df.to_json(f"{self.save_path}/sub_batch_for_elo.jsonl", orient='records', lines=True)
+        self.progress_dict['build_sub_batch'] = 'done'
+        self.save_progress_dict()
+    
+    def load_sub_batch(self):
+        return pd.read_json(f"{self.save_path}/sub_batch_for_elo.jsonl", orient='records', lines=True)
+    
+    def save_elos(self, df):
+        df.to_json(f"{self.save_path}/computed_elos.jsonl", orient='records', lines=True)
+        self.progress_dict['compute elos'] = 'done'
+        self.save_progress_dict()
+    
+    def load_elos(self):
+        return pd.read_json(f"{self.save_path}/computed_elos.jsonl", orient='records', lines=True)

@@ -23,7 +23,7 @@ from utils.saving_manager import *
 import numpy as np
 import argparse
 from evaluate import load
-from multielo import MultiElo
+from multielo import MultiElo, Player, Tracker
 import matplotlib.pyplot as plt
 import sys
 import os
@@ -43,6 +43,8 @@ ROUGE_SUB_SCORES = ['rouge1', 'rouge2',	'rougeL', 'rougeLsum']
 COUNTS_TYPES = ['missing_keys_count', 'extra_keys_count', 'common_none_count',  
                 'gold_none_count', 'pred_none_count', 'common_non_none', 'all_keys_count']
 KEY_MISMATCH_TYPE = ['gold_none_keys', 'pred_none_keys', 'missing_keys']
+MODELS_TO_COLUMN = {'our_model': 'pred_note', 'gpt-3': 'pred_note-gpt', 'our_model_direct': 'pred_direct', 'gold' : 'data'}
+from itertools import combinations
 
 
 
@@ -65,6 +67,29 @@ def build_evaluation_inputs(inference_sample_path):
     save_evaluation_input( 'note_eval_input.jsonl', inference_sample,'pred_note')
     save_evaluation_input('direct_note_eval_input.jsonl', inference_sample,'pred_direct')
     save_evaluation_input('gpt_note_eval_input.jsonl', inference_sample, 'pred_note-gpt')
+    save_elo_inputs('elo_inputs.jsonl', inference_sample)
+
+def save_elo_inputs(output_filename, inference_sample, models_to_compare = MODELS_TO_COLUMN.keys()):
+    #Selecting columns to keep
+    outputs_notes = inference_sample[['idx'] +[MODELS_TO_COLUMN[model] for model in models_to_compare]].dropna()
+
+    #Renaming columns
+    outputs_notes = outputs_notes.rename(columns={MODELS_TO_COLUMN[model]: model for model in models_to_compare})
+    #Possible pair combinations:
+    model_pairs = list(combinations(models_to_compare, 2))
+
+    #Creating a dataframe with all possible pairs
+    all_pairs_df = pd.DataFrame()
+    all_pairs_df['modelA'] = [pair[0] for pair in model_pairs]
+    all_pairs_df['modelB'] = [pair[1] for pair in model_pairs]
+    all_pairs_df['idx'] = [outputs_notes['idx'].tolist() for _ in range(len(model_pairs))] 
+    all_pairs_df['noteA'] = [outputs_notes[model].tolist() for model in all_pairs_df['modelA']]
+    all_pairs_df['noteB'] = [outputs_notes[model].tolist() for model in all_pairs_df['modelB']]
+
+    all_pairs_df = all_pairs_df.explode(['idx', 'noteA', 'noteB'])
+
+    #Saving dataframe
+    save_file(all_pairs_df, os.path.join(EVAL_DIR, output_filename))
 
 # ----------------------- 1 - Patient Summary evaluation ----------------------- #
 
@@ -419,42 +444,41 @@ def note_evaluation(model_name, path, save_path = None ,score_types='all'):
         - score_types (str or list): list of scoring functions to be used. Default: 'all' (all scoring functions)
     '''
     # Load dataframe with inference results
-    df = load_file(path)
-    df = df.sample(frac=1).reset_index(drop=True)
-    df['model_name'] = model_name
-
-    pairs = pd.Series([{'gold': gold, 'pred': pred} for gold, pred in zip(df['gold'], df['pred'])])
-
-    # Compute scores for each pair of gold and pred clinical notes
 
     eval_saving = EvalSaving(NOTE_EVALUATION_STEPS, path, save_path)
 
-    scorer = Scorer(score_types)
-    scores = scorer(pairs)
+    df = load_file(path)
+    df = df.sample(frac=1).reset_index(drop=True)
+    df['model_name'] = model_name
+    # Compute scores for each pair of gold and pred clinical notes
+    scorer = Scorer(eval_saving,score_types)
+    
+    df['pairs'] = df.apply(lambda row: {'gold': row['gold'], 'pred': row['pred']}, axis=1)
+    df['idxs'] = df.index
+
+    if eval_saving.get_progress_dict()['scores'] != 'done':
+        scores = scorer(df)
+    else:
+        scores = eval_saving.load_all_scores()
 
     if score_types == 'all':
-        score_types = ALL_SCORE_TYPES
+        new_score_types = ALL_SCORE_TYPES.copy()
     elif score_types == 'rouge':
-        score_types = ROUGE_SUB_SCORES
+        new_score_types = ROUGE_SUB_SCORES.copy()
     else:   
         if 'rouge' in score_types:
-            score_types.remove('rouge')
-            score_types.extend(ROUGE_SUB_SCORES)
+            new_score_types = score_types.copy()
+            new_score_types.remove('rouge')
+            new_score_types.extend(ROUGE_SUB_SCORES)
 
-    for metric in score_types:
+    for metric in new_score_types:
         df[metric] = scores[metric]
 
-    # Compute ELO ranking from GPT-4 scores
-    '''if 'gpt_rank' in score_types:
-        rankings_path = path.replace('.jsonl', '_rankings.jsonl')
-        rankings = elo_ranking(df)
-        print(f'ELO rankings: {rankings}')
-        with open(rankings_path, 'w') as f:
-            json.dump(rankings, f)
-            print(f'Saved ELO rankings to {rankings_path}')'''
+    df.drop(['idxs', 'pairs'], axis=1, inplace=True)
+
     return df
 
-def elo_ranking(df):
+def elo_ranking(path, frac = 0.25 ,save_path = None):
     ''' 
     Elo ranking for clinical note evaluation with GPT-4.
     Taken from https://portkey.ai/blog/comparing-llm-outputs-with-elo-ratings/
@@ -464,37 +488,56 @@ def elo_ranking(df):
     Returns: 
         - rankings (dict of str: float): dictionary of Elo rankings for each model
 
-    All models start at 1500 Elo rating.
-    
-    TODO: CHECK THIS RUNS. 
     '''
-    model_names = list(df['model_name'].unique()) + ['gpt-4']
-    elo_history = {model: np.array([1500]) for model in model_names}
+    df = load_file(path)
+
+    saving_manager = EvalSaving(ELO_RANKING_STEPS, path, save_path)
+
+    if saving_manager.get_progress_dict()['compute elos'] == 'done':
+        return saving_manager.load_elos()
+
+    df['pairs'] = df.apply(lambda row: {'noteA': row['noteA'], 'noteB': row['noteB']}, axis=1)
+
+    model_names = list(set(list(df['modelA'].unique()) + list(df['modelB'].unique())))
+
+    if saving_manager.get_progress_dict()['build_sub_batch'] != 'done':
+        sub_df = df.sample(frac=frac).reset_index(drop=True).sort_values(by = 'idx')
+        sub_df['idxs'] = sub_df.index
+        saving_manager.save_sub_batch(sub_df)
+    else:
+        sub_df = saving_manager.load_sub_batch()
+
+    ranker = Scorer(saving_manager,['gpt_rank'])
+
+    ranks = ranker(sub_df)
+    ranks.drop(['pairs'], axis=1, inplace=True)
+
+    players = {model: Player(model) for model in model_names}
     elo = MultiElo()
 
+
     # For each score given in df, compute Elo ranking
-    score_dict = {model: [] for model in model_names}
-    for i, row in tqdm(df.iterrows(), total=df.shape[0], desc="Computing ELO rankings"):
-        model = row['model_name']
-        rank_score = row['gpt_rank']
-        score_dict[model].append(rank_score)
-        new_ratings = elo.get_new_ratings(elo_history[model], [rank_score])
-        elo_history[model] = np.append(elo_history[model], new_ratings[0])
+    for _, row in tqdm(ranks.iterrows(), total=ranks.shape[0], desc="Computing ELO rankings"):
+        winner = row['gpt_rank']
+        if winner == "tie":
+            result_order = [1, 1]
+        else :
+            result_order = [1,2]
 
-    # Show Elo ranking history as a plot
-    for model in model_names:
-        plt.plot(elo_history[model], label=model)
-    plt.xlabel("Number of Iterations")
-    plt.ylabel("Elo Rating")
-    plt.title("Elo Rating Changes")
-    plt.legend()
-    plt.show()
+        winner = row['modelA'] if winner != 'noteB' else row['modelB']
+        loser = row['modelB'] if winner != 'noteB' else row['modelA']
 
-    # Compute Elo ranking for each model
-    rankings = {}
-    for model in model_names:
-        rankings[model] = elo_history[model][-1]
-    return rankings
+        new_ratings = elo.get_new_ratings([players[winner].rating, players[loser].rating],
+                            result_order = result_order)
+        players[winner].update_rating(new_ratings[0], row['idx'])
+        players[loser].update_rating(new_ratings[1], row['idx'])
+        
+    elo_histories = pd.DataFrame({'model' : model_names,
+                                  'elo_history' : [players[model].rating_history for model in model_names]})
+    
+    saving_manager.save_elos(elo_histories)
+
+    return elo_histories
 
 
 if __name__ == "__main__":
