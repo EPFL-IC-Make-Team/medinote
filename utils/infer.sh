@@ -7,7 +7,7 @@ OUTPUT_PATH_GPT3=/pure-mlo-scratch/make_project/data/inference/generation_gpt3.j
 NUM_SAMPLES=3
 
 if [ "$1" == "meditron-7b-summarizer" ] || [ "$1" == "all" ]; then
-    python3 utils/inference.py \
+    python3 utils/infer.py \
         --model_name meditron-7b-summarizer \
         --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-7b-summarizer/hf_checkpoint/ \
         --input_path $INPUT_PATH \
@@ -18,7 +18,7 @@ if [ "$1" == "meditron-7b-summarizer" ] || [ "$1" == "all" ]; then
         --verbose
 fi     
 if [ "$1" == "meditron-7b-generator"  ] || [  "$1" == "all" ]; then
-    python3 utils/inference.py \
+    python3 utils/infer.py \
         --model_name meditron-7b-generator \
         --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-7b-generator/hf_checkpoint/ \
         --input_path $INPUT_PATH \
@@ -28,7 +28,7 @@ if [ "$1" == "meditron-7b-generator"  ] || [  "$1" == "all" ]; then
         --verbose
 fi
 if [ "$1" == "meditron-7b-generator-gpt"  ] || [  "$1" == "all" ]; then
-    python3 utils/inference.py \
+    python3 utils/infer.py \
         --model_name meditron-7b-generator-gpt \
         --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-7b-generator/hf_checkpoint/ \
         --input_path $INPUT_PATH \
@@ -39,7 +39,7 @@ if [ "$1" == "meditron-7b-generator-gpt"  ] || [  "$1" == "all" ]; then
         --use_gpt_summary
 fi
 if [ "$1" == "meditron-7b-direct"  ] || [  "$1" == "all" ]; then
-    python3 utils/inference.py \
+    python3 utils/infer.py \
         --model_name meditron-7b-direct \
         --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-7b-direct/hf_checkpoint/ \
         --input_path $INPUT_PATH \
@@ -49,7 +49,7 @@ if [ "$1" == "meditron-7b-direct"  ] || [  "$1" == "all" ]; then
         --verbose
 fi
 if [ "$1" == "meditron-13b-summarizer"  ] || [  "$1" == "all" ]; then
-    python3 utils/inference.py \
+    python3 utils/infer.py \
         --model_name meditron-13b-summarizer \
         --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-13b-summarizer/hf_checkpoint/ \
         --input_path $INPUT_PATH \
@@ -60,7 +60,7 @@ if [ "$1" == "meditron-13b-summarizer"  ] || [  "$1" == "all" ]; then
         --verbose
 fi
 if [ "$1" == "meditron-13b-generator"  ] || [  "$1" == "all" ]; then
-    python3 utils/inference.py \
+    python3 utils/infer.py \
         --model_name meditron-13b-generator \
         --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-13b-generator/hf_checkpoint/ \
         --input_path $INPUT_PATH \
@@ -70,7 +70,7 @@ if [ "$1" == "meditron-13b-generator"  ] || [  "$1" == "all" ]; then
         --verbose
 fi
 if [ "$1" == "meditron-13b-generator-gpt"  ] || [  "$1" == "all" ]; then
-    python3 utils/inference.py \
+    python3 utils/infer.py \
         --model_name meditron-13b-generator-gpt \
         --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-13b-generator/hf_checkpoint/ \
         --input_path $INPUT_PATH \
@@ -80,7 +80,7 @@ if [ "$1" == "meditron-13b-generator-gpt"  ] || [  "$1" == "all" ]; then
         --verbose
 fi
 if [ "$1" == "meditron-13b-direct"  ] || [  "$1" == "all" ]; then
-    python3 utils/inference.py \
+    python3 utils/infer.py \
         --model_name meditron-13b-direct \
         --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-13b-direct/hf_checkpoint/ \
         --input_path $INPUT_PATH \
@@ -90,7 +90,7 @@ if [ "$1" == "meditron-13b-direct"  ] || [  "$1" == "all" ]; then
         --verbose
 fi
 if [ "$1" == "gpt3-direct" ] || [ "$1" == "all" ]; then
-    python3 utils/inference.py \
+    python3 utils/infer.py \
         --model_name gpt-3.5-turbo \
         --input_path $INPUT_PATH \
         --output_path $OUTPUT_PATH_GPT3 \
