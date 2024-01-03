@@ -83,6 +83,7 @@ PARAMETERS = {
 
 
 # ----------------------- Summarizer inference utilities ----------------------- #
+
 class CustomStoppingCriteria(StoppingCriteria):
 
     def __init__(self, stops = []):
@@ -136,7 +137,7 @@ def check_summary(answer, prev_answer, template):
     answer = complete_json(answer)
     if answer is None:
         return False, template, prev_answer
-    print(f'\n\n### PARTIAL ANSWER: \n\n{json.dumps(answer, indent=4)}')
+    #print(f'\n\n### PARTIAL ANSWER: \n\n{json.dumps(answer, indent=4)}')
     
     # Merge with existing answer
     for key in answer.keys():
@@ -322,9 +323,9 @@ def infer(
     instructions = INSTRUCTIONS[mode]
     input_key = KV_PAIRS[mode]['input']
     output_key = KV_PAIRS[mode]['output']
-    stoppers = ['visit motivation'] if mode == 'summarizer' else []
-    stoppers += [EOS_TOKEN, BOS_TOKEN]
-    stops = [tokenizer(stop, return_tensors='pt')['input_ids'].squeeze() for stop in stoppers]
+    stoppers = [EOS_TOKEN, BOS_TOKEN]
+    stops = [[tokenizer(stop, return_tensors='pt', add_special_tokens=False)[
+        'input_ids'].squeeze().tolist()] for stop in stoppers]
     print(f"Stopping criteria: {stoppers}\nStopping ids: {stops}")
     pipe = pipeline("text-generation", 
                     model=model, 
@@ -334,50 +335,41 @@ def infer(
                     stopping_criteria=[CustomStoppingCriteria(stops=stops)],
                     **PARAMETERS[mode])
     
-    print(f"\nLoading input file from {input_path}...")
+    print(f"\nLoading data file from {input_path}...")
     data_df = load_file(input_path)
     if 'idx' not in data_df.columns:
         data_df['idx'] = data_df.index
     data_df = data_df.reset_index(drop=True)
-    if os.path.exists(output_path):
-        print(f"Output file found at {output_path}. Loading it.")
-        gen_df = load_file(output_path)
-    else :
-        print(f"Output file not found at {output_path}. Initializing it.")
-        gen_df = data_df.copy()
-        gen_df[output_key] = None
-        gen_df['model_name'] = model_name
+    if input_key not in data_df.columns:
+        raise ValueError(f'Input key {input_key} not found in data file.')
 
-    print('Output file columns: ', list(gen_df.columns))
-    if input_key not in gen_df.columns:
-        raise ValueError(f'Input key {input_key} not found in dataset.')
+    print(f"Loading output file from {output_path}...")
+    if os.path.exists(output_path):
+        gen_df = load_file(output_path)
+    else:
+        gen_df = data_df.copy()
     if output_key not in gen_df.columns:
         gen_df[output_key] = None
-    print(f'Output file has {len(gen_df)} samples.')
     
     # Check which samples to generate
-    idx_todo = gen_df.index.tolist()
+    idx_todo = data_df['idx'].tolist()
     if num_samples and len(idx_todo) > num_samples:
         idx_todo = idx_todo[:num_samples]
     idx_done = gen_df[gen_df[output_key].notnull()]['idx'].tolist()
     idx_todo = [i for i in idx_todo if i not in idx_done]
     if len(idx_todo) == 0:
         raise ValueError(f'All samples already generated in {input_path}.')
-    idx_todo = [i for i in idx_todo if gen_df.loc[i][input_key] is not None]
-    if len(idx_todo) == 0:
-        raise ValueError(f'No samples with input key {input_key} to generate in {input_path}.')
     template = None if mode != 'summarizer' else load_template(template_path)
 
     # Generate samples
     for i in tqdm(idx_todo, desc='Generating samples'):
-        row = gen_df.loc[i]
+        row = gen_df[gen_df['idx'] == i].iloc[0]
 
         if mode == 'generator' or mode == 'direct':
-            if mode == 'generator': # Remove all lines containing : "None"
-                input = '\n'.join([line for line in row[input_key].split('\n') if ': \"None\"' not in line])
-            else:
-                input = row[input_key]
-            query = BOS_TOKEN + '\n' + instructions[0] + '\n\n' + input + '\n\n' + instructions[1] + f'{EOS_TOKEN}\n{BOS_TOKEN} '
+            input = row[input_key]
+            if mode == 'generator':
+                input = '\n'.join([line for line in input.split('\n') if ': \"None\"' not in line])
+            query = f"{BOS_TOKEN}\n{instructions[0]}\n\n{input}\n\n{instructions[1]}{EOS_TOKEN}\n{BOS_TOKEN} "
             if verbose: print(f'\n\n### PROMPT:\n\n{query}')
             answer = pipe(query)[0]['generated_text']
 
@@ -386,10 +378,11 @@ def infer(
         if verbose: print(f'\n\n### ANSWER: \n\n{answer}')
         answer = answer.replace(BOS_TOKEN, '').replace(EOS_TOKEN, '').strip()
         
-        new_row = row.copy()
-        new_row.update({'idx': i, 'model_name': model_name, output_key: answer})
-        new_row_df = pd.DataFrame(new_row)
-        gen_df = pd.concat([gen_df, new_row_df], ignore_index=True)
+        row['model_name'] = model_name
+        row[output_key] = answer
+        gen_df = gen_df.append(row, ignore_index=True)
+        #new_row_df = pd.DataFrame(new_row)
+        #gen_df = pd.concat([gen_df, new_row_df], ignore_index=True)
         save_file(gen_df, output_path, mode='w')
     return gen_df
     
