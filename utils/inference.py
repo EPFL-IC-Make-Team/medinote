@@ -227,6 +227,7 @@ def infer_openai(
         max_token_per_partition=max_tokens,
         model = openai_model
     )
+    infered_df = pd.DataFrame(columns = dialogues_df.columns)
 
     for i, (sub_batch_df, nb_tokens) in enumerate(sub_batches):
         print(f"Sub_batch {i+1}/{len(sub_batches)}: {sub_batch_df.shape[0]} calls, {nb_tokens} total tokens: {nb_tokens/1000 * 0.001}$")
@@ -243,10 +244,8 @@ def infer_openai(
         sub_batch_df.drop(columns = ['messages'], inplace = True)
         ids_done.extend(sub_batch_df['idx'].tolist())
         infered_df = pd.concat([infered_df, sub_batch_df], ignore_index = True)
-        
-        with open(save_path, 'a') as f:
-            f.write(sub_batch_df.to_json(orient='records', lines=True))
-            print(f'\nSub-batch {i+1} Saved (size {sub_batch_df.shape[0]})\n')
+        save_file(infered_df, save_path, mode = 'w')
+        print(f'\nSub-batch {i+1} Saved (size {sub_batch_df.shape[0]})\n')
 
         end_time = time.time()
         time_taken = (end_time - start_time)
