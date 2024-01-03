@@ -29,6 +29,9 @@ import sys
 import os
 import json
 
+import nltk
+from nltk.corpus import stopwords
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 
 BERT_SCORER = load("bertscore")
@@ -43,7 +46,7 @@ ROUGE_SUB_SCORES = ['rouge1', 'rouge2',	'rougeL', 'rougeLsum']
 COUNTS_TYPES = ['missing_keys_count', 'extra_keys_count', 'common_none_count',  
                 'gold_none_count', 'pred_none_count', 'common_non_none', 'all_keys_count']
 KEY_MISMATCH_TYPE = ['gold_none_keys', 'pred_none_keys', 'missing_keys']
-MODELS_TO_COLUMN = {'our_model': 'pred_note', 'gpt-3': 'pred_note-gpt', 'our_model_direct': 'pred_direct', 'gold' : 'data'}
+MODELS_TO_COLUMN = {'our_model': 'pred_note', 'gpt_3': 'pred_note_gpt3', 'our_model_direct': 'pred_direct', 'gold' : 'data'}
 from itertools import combinations
 
 
@@ -61,35 +64,37 @@ def save_evaluation_input(output_filename, inference_sample,pred_data, gold_data
     eval_input = eval_input.rename(columns={gold_data: 'gold', pred_data: 'pred'})
     save_file(eval_input, os.path.join(EVAL_DIR, output_filename))
 
-def build_evaluation_inputs(inference_sample_path):
+def build_evaluation_inputs(inference_sample_path, models = MODELS_TO_COLUMN.keys(), summary = True):
     inference_sample = load_file(inference_sample_path)
-    save_evaluation_input('summary_eval_input.jsonl', inference_sample, 'pred_summary', 'summary')
-    save_evaluation_input( 'note_eval_input.jsonl', inference_sample,'pred_note')
-    save_evaluation_input('direct_note_eval_input.jsonl', inference_sample,'pred_direct')
-    save_evaluation_input('gpt_note_eval_input.jsonl', inference_sample, 'pred_note-gpt')
-    save_elo_inputs('elo_inputs.jsonl', inference_sample)
+    if summary:
+        save_evaluation_input('summary_eval_input.jsonl', inference_sample, 'pred_summary', 'summary')
+    for model in models:
+            save_evaluation_input(f'{model}_eval_input.jsonl', inference_sample, MODELS_TO_COLUMN[model])  
+    
+    save_elo_inputs('elo_inputs.jsonl', inference_sample, models)
 
 def save_elo_inputs(output_filename, inference_sample, models_to_compare = MODELS_TO_COLUMN.keys()):
     #Selecting columns to keep
-    outputs_notes = inference_sample[['idx'] +[MODELS_TO_COLUMN[model] for model in models_to_compare]].dropna()
+    if len(models_to_compare) >=2:
+        outputs_notes = inference_sample[['idx'] +[MODELS_TO_COLUMN[model] for model in models_to_compare]].dropna()
 
-    #Renaming columns
-    outputs_notes = outputs_notes.rename(columns={MODELS_TO_COLUMN[model]: model for model in models_to_compare})
-    #Possible pair combinations:
-    model_pairs = list(combinations(models_to_compare, 2))
+        #Renaming columns
+        outputs_notes = outputs_notes.rename(columns={MODELS_TO_COLUMN[model]: model for model in models_to_compare})
+        #Possible pair combinations:
+        model_pairs = list(combinations(models_to_compare, 2))
 
-    #Creating a dataframe with all possible pairs
-    all_pairs_df = pd.DataFrame()
-    all_pairs_df['modelA'] = [pair[0] for pair in model_pairs]
-    all_pairs_df['modelB'] = [pair[1] for pair in model_pairs]
-    all_pairs_df['idx'] = [outputs_notes['idx'].tolist() for _ in range(len(model_pairs))] 
-    all_pairs_df['noteA'] = [outputs_notes[model].tolist() for model in all_pairs_df['modelA']]
-    all_pairs_df['noteB'] = [outputs_notes[model].tolist() for model in all_pairs_df['modelB']]
+        #Creating a dataframe with all possible pairs
+        all_pairs_df = pd.DataFrame()
+        all_pairs_df['modelA'] = [pair[0] for pair in model_pairs]
+        all_pairs_df['modelB'] = [pair[1] for pair in model_pairs]
+        all_pairs_df['idx'] = [outputs_notes['idx'].tolist() for _ in range(len(model_pairs))] 
+        all_pairs_df['noteA'] = [outputs_notes[model].tolist() for model in all_pairs_df['modelA']]
+        all_pairs_df['noteB'] = [outputs_notes[model].tolist() for model in all_pairs_df['modelB']]
 
-    all_pairs_df = all_pairs_df.explode(['idx', 'noteA', 'noteB'])
+        all_pairs_df = all_pairs_df.explode(['idx', 'noteA', 'noteB'])
 
-    #Saving dataframe
-    save_file(all_pairs_df, os.path.join(EVAL_DIR, output_filename))
+        #Saving dataframe
+        save_file(all_pairs_df, os.path.join(EVAL_DIR, output_filename))
 
 # ----------------------- 1 - Patient Summary evaluation ----------------------- #
 
@@ -430,8 +435,16 @@ def summary_evaluation(path, save_path = None ,score_types=['bleu', 'rouge', 'be
     return dataset, score_by_keys
 
 # ----------------------- 2 - Clinical note evaluation ----------------------- #
-    
-    
+
+def remove_stopwords(text):
+    stop_words = set(stopwords.words('english'))
+    word_tokens = nltk.word_tokenize(text)
+    filtered_text = [word for word in word_tokens if word.lower() not in stop_words]
+    return ' '.join(filtered_text)
+
+def remove_stopwords_from_pair(pair):
+    return {'gold': remove_stopwords(pair['gold']), 'pred': remove_stopwords(pair['pred'])}
+
 def note_evaluation(model_name, path, save_path = None ,score_types='all'): 
     '''
     2 - Clinical note evaluation
@@ -457,7 +470,7 @@ def note_evaluation(model_name, path, save_path = None ,score_types='all'):
     df['idxs'] = df.index
 
     if eval_saving.get_progress_dict()['scores'] != 'done':
-        scores = scorer(df)
+        scores = scorer(df, remove_stopwords = True)
     else:
         scores = eval_saving.load_all_scores()
 
@@ -465,11 +478,11 @@ def note_evaluation(model_name, path, save_path = None ,score_types='all'):
         new_score_types = ALL_SCORE_TYPES.copy()
     elif score_types == 'rouge':
         new_score_types = ROUGE_SUB_SCORES.copy()
-    else:   
-        if 'rouge' in score_types:
+    elif 'rouge' in score_types:
             new_score_types = score_types.copy()
             new_score_types.remove('rouge')
             new_score_types.extend(ROUGE_SUB_SCORES)
+    else : new_score_types = score_types.copy()
 
     for metric in new_score_types:
         df[metric] = scores[metric]

@@ -20,9 +20,11 @@ import sys
 import os
 import time
 
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 
 from utils.chat import *
+from utils.eval import *
 from utils.inference import *
 
 BERT_SCORER = load("bertscore")
@@ -55,7 +57,7 @@ class Scorer():
         
         #print('Initialized scorer with modes: ', list(self.score_types))
 
-    def __call__(self, pairs_df): 
+    def __call__(self, pairs_df, remove_stopwords = False): 
         '''
         Given a pandas dataframe with gold and predicted pairs and idxs, 
         returns a dataframe with the different computed scores.
@@ -71,15 +73,23 @@ class Scorer():
                 'bert': [0.7]
                     })
         '''
+
+        if remove_stopwords and ('bleu' in self.score_types or 'rouge' in self.score_types):
+            print("Removing stopwords...")
+            pairs_df['pairs_prep'] = pairs_df['pairs'].apply(lambda x: remove_stopwords_from_pair(x))
+            print("Stopwords removed.")
+        else:
+            pairs_df['pairs_prep'] = pairs_df['pairs']
+
         if 'bleu' in self.score_types:
-            pairs_df['bleu'] = self.BLEU_scorer(pairs_df['pairs'])['bleu']
+            pairs_df['bleu'] = self.BLEU_scorer(pairs_df['pairs_prep'])['bleu']
 
         if 'rouge' in self.score_types:
-            rouges = self.ROUGE_scorer(pairs_df['pairs'])
+            rouges = self.ROUGE_scorer(pairs_df['pairs_prep'])
             for metric in rouges.keys(): #different rouge scores
                 pairs_df[metric] = rouges[metric]
         if 'bert' in self.score_types:
-            pairs_df['bert'] = self.BERT_scorer(pairs_df['pairs'])['bert']
+            pairs_df['bert'] = self.BERT_scorer(pairs_df[['idxs','pairs']])
 
         if 'gpt_rank' in self.score_types:
             pairs_df['gpt_rank'] = self.GPT_ranker(pairs_df[['idxs','pairs']])
@@ -140,24 +150,55 @@ class Scorer():
     def BERT_scorer(self, pairs):
         '''BERT score for summary evaluation'''
         print("Computing BERTscores...")
+        start_time = time.time()
         status = self.saving_manager.get_progress_dict()['bert']
         if status == 'done':
                 print("BERTscores already computed.")
-                return self.saving_manager.load_one_score('bert')
+                return self.saving_manager.load_one_score('bert')['bert']
         else :
             if status == 'in progress':
                 print("BERTscores computation already in progress, resuming")
-                pairs_to_compute = self.saving_manager.get_one_score_to_compute('bert', pairs)
+                computed = self.saving_manager.load_one_score('bert')
+                pairs_to_compute = pairs[~pairs['idxs'].isin(computed['idxs'].tolist())]
+
             else :
                 pairs_to_compute = pairs
-            bert_scores = {'bert': 
+            
+            #display(pairs_to_compute)
+
+            #batches of 100 pairs
+            batches = [pairs_to_compute.iloc[i:i + 10].copy() for i in range(0, len(pairs_to_compute), 10)]
+            res = pd.DataFrame()
+            for batch in tqdm(batches, total = len(batches) ,desc="Computing BERT scores"):
+                bert_scores = {'bert': 
+                    BERT_SCORER.compute(
+                        predictions=[pair['pred'] for pair in batch['pairs']],
+                        references=[pair['gold'] for pair in batch['pairs']],
+                        model_type= 'distilbert-base-uncased',
+                        verbose = False)['f1']
+                        #lang='en')['f1']
+                    }
+                #print(bert_scores['bert'])
+                #display(batch)
+                batch['bert'] = bert_scores['bert']
+                #display(batch)
+                self.saving_manager.save_one_score(batch[['idxs', 'bert']],'bert', done = False)
+                res = pd.concat([res, batch[['idxs', 'bert']]], ignore_index=True)
+            
+
+            self.saving_manager.save_one_score(res, 'bert', done = True)
+
+            '''bert_scores = {'bert': 
                 BERT_SCORER.compute(
                     predictions=[pair['pred'] for pair in pairs_to_compute],
                     references=[pair['gold'] for pair in pairs_to_compute],
-                    lang='en')['f1']
-                }
-            self.saving_manager.save_one_score(pd.DataFrame(bert_scores),'bert', done = True)
-            print("BERTscores computed.")
+                    model_type= 'distilbert-base-uncased',
+                    verbose = True)['f1']
+                    #lang='en')['f1']
+                }'''
+            
+            end_time = time.time()
+            print(f"BERTscores computed. Time taken: {(end_time - start_time)/60} minutes.")
             return bert_scores
     
     def ranker_formatting(self, answer):
@@ -340,7 +381,7 @@ class Scorer():
                    chat=chat_gpt_4_turbo,
                    temperature=0.0,
                    max_tokens = 5000,
-                   one_call_batch_size=3):
+                   one_call_batch_size=5):
         ''' 
         Given a model’s answer and GPT-4' answer (silver label), 
         ask GPT-4 with CoT to compute the similarity between the two answers on a scale of 1 to 10. 
@@ -397,10 +438,19 @@ class Scorer():
             usr_prompt = '\n'.join([f"(pair {i}, {optionA}, {optionB})" for i, (optionA, optionB) in enumerate(zip(optionsA, optionsB))])
             idxs_grouped.append(idxs)
             messages.append(build_messages(sys_prompt, usr_prompt))
-        sub_batches = partition(dataframe = pd.DataFrame({'idxs': idxs_grouped, 'messages': messages}), max_token_per_partition=max_tokens,model = model_name)
-        # Generate answers by batches
+        
         
 
+        
+
+        sub_batches = partition(dataframe = pd.DataFrame({'idxs': idxs_grouped, 'messages': messages}), max_token_per_partition=max_tokens,model = model_name)
+
+        total_tokens = np.sum([nb_tok for _, nb_tok in sub_batches])
+        print(f"Total input tokens: {total_tokens}, total input cost: {total_tokens/1000 * 0.01}$")
+        time.sleep(30)
+
+        # Generate answers by batches
+        
         for i, (sub_batch, nb_tokens) in enumerate(sub_batches):
             print(f"Sub_batch {i+1}/{len(sub_batches)}: {sub_batch.shape[0]} calls, {nb_tokens} total tokens: {nb_tokens/1000 * 0.01}$")
             
