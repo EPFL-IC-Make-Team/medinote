@@ -15,7 +15,7 @@ between the two answers on a scale of 1 to 10. The higher the number the closer 
 '''
 
 from utils.chat import *
-from utils.inference import *
+from utils.infer import *
 from utils.scorer import *
 from utils.data import *
 from utils.saving_manager import *

@@ -25,7 +25,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.chat import *
 from utils.eval import *
-from utils.inference import *
+from utils.infer import *
 
 BERT_SCORER = load("bertscore")
 ROUGE_SCORER = load("rouge")
