@@ -18,8 +18,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.data import *
 
 # ----------------------- Constants ----------------------- #
-test = 2
-test = 3
+
+BOS_TOKEN = '<|im_start|>'
+EOS_TOKEN = '<|im_end|>'
+
 KV_PAIRS = {
     'summarizer': {
         'input': 'conversation',
@@ -28,6 +30,10 @@ KV_PAIRS = {
     'generator': {
         'input': 'pred_summary',
         'output': 'pred_note',
+    },
+    'generator-gpt': {
+        'input': 'summary',
+        'output': 'pred_note-gpt',
     },
     'direct': {
         'input': 'conversation',
@@ -50,33 +56,24 @@ INSTRUCTIONS = {
     ]
 }
 
-# Use beam search for generator and direct
+# Default parameters for inference/evaluation. 
 
 PARAMETERS = {
     'summarizer' : {
         'max_length': 2048,
-        'do_sample': True,
-        'num_beams': 1,
-        'top_p': 0.95,
+        'do_sample': False,
         'num_return_sequences': 1,
-        'return_full_text': False,
-        'max_time': 300,
+        'return_full_text': False
     },
     'generator' : {
         'max_length': 2048, 
-        'do_sample': True,
-        'num_beams': 3,
-        'top_p': 0.95,
+        'do_sample': False,
         'num_return_sequences': 1,
-        'return_full_text': False, 
-        
-
+        'return_full_text': False
     },
     'direct' : {
         'max_length': 2048,
-        'do_sample': True,
-        'num_beams': 1,
-        'top_p': 0.95,
+        'do_sample': False,
         'num_return_sequences': 1,
         'return_full_text': False
     }
@@ -84,16 +81,17 @@ PARAMETERS = {
 
 
 # ----------------------- Summarizer inference utilities ----------------------- #
-
-class StoppingCriteriaSub(StoppingCriteria):
+class CustomStoppingCriteria(StoppingCriteria):
 
     def __init__(self, stops = []):
-      StoppingCriteria.__init__(self), 
+        self.stops = stops 
 
-    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, stops = []):
-      self.stops = stops
-      for i in range(len(stops)):
-        self.stops = self.stops[i]
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, stops = []) -> bool:
+        for stop in self.stops:
+            last_ids = input_ids[:,-len(stop):].tolist()
+            if stop in last_ids:
+                return True
+        return False
 
 def load_template(template_path):
     '''
@@ -149,6 +147,27 @@ def check_summary(answer, prev_answer, template):
     return valid, missing, prev_answer
 
 
+def load_model(model_path):
+    print(f"Loading model from {model_path}...")
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f'Model not found at {model_path}.')
+    try:
+        model = AutoModelForCausalLM.from_pretrained(model_path, use_cache=True, device_map="auto")
+        tokenizer = AutoTokenizer.from_pretrained(model_path, use_cache=False)
+        print(f"Model is running on {torch.cuda.device_count()} GPUs.")
+    except Exception as e:
+        raise ValueError(f"Error when loading model and tokenizer from {model_path}:\n{e}")
+    model.eval()
+
+    #vocabulary = tokenizer.get_vocab().keys()
+    #if EOS_TOKEN not in vocabulary and BOS_TOKEN not in vocabulary:
+    #    print('EOS_TOKEN and BOS_TOKEN not found in tokenizer vocabulary. Adding them.')
+    #    tokenizer.add_special_tokens({'eos_token': EOS_TOKEN, 'bos_token': BOS_TOKEN})
+    #    model.resize_token_embeddings(len(tokenizer))
+
+    return model, tokenizer
+
+
 # ----------------------- Inference pipeline ----------------------- #
     
 
@@ -177,7 +196,7 @@ def infer_summary(dialogue,
                 + formatting(json.dumps(missing, indent=4)) \
                 + '\n\n' + starter
             if verbose: print(f'\n\n### PROMPT:\n\n{prompt_end}')
-            prompt = instructions[0] + '\n\n' + dialogue + prompt_end
+            prompt = BOS_TOKEN + '\n' + instructions[0] + '\n\n' + dialogue + prompt_end + f'\n{EOS_TOKEN}\n{BOS_TOKEN} '
         partial_answer = starter + pipe(prompt)[0]['generated_text'].strip()
         limiter = re.search(r'}\s*}', partial_answer)
         if limiter: partial_answer = partial_answer[:limiter.end()].strip()
@@ -189,7 +208,6 @@ def infer_summary(dialogue,
     answer = json.dumps(current_answer, indent=4)
     return answer
 
-
 def infer(
         model_name,
         model_path, 
@@ -198,7 +216,6 @@ def infer(
         num_samples=None, 
         mode='summarizer',
         template_path=None,
-        use_gpt_summary=False,
         verbose=False):
     '''
     Loads a model and generates clinical notes. 
@@ -212,68 +229,44 @@ def infer(
         - input_path: Path to the data file with dialog or patient summaries. 
         - output_path: Path to the output file with generated notes
         - num_samples: Number of samples to generate (default: None --> all)
-        - mode: 'summarizer' or 'generator'
+        - mode: 
+            summarizer      -> generate summaries from conversations
+            generator       -> generate notes from summarier's summaries
+            generator-gpt   -> generate notes from GPT-4's summaries
+            direct          -> generate notes directly from conversations
         - template_path: Path to the template file (.json), only for summarizer mode
-        - use_gpt_summary: Whether to use GPT-4 summaries as input, only for generator mode
     '''
-    print(f"\n\n# ----- INFERENCE: mode = {mode}, model = {model_name} ----- #\n\n")
-    # Load model
-    print(f"Loading model from {model_path}...")
-    if not os.path.exists(model_path):
-        raise FileNotFoundError(f'Model not found at {model_path}.')
-    try:
-        model = AutoModelForCausalLM.from_pretrained(model_path, use_cache=True, device_map="auto")
-        tokenizer = AutoTokenizer.from_pretrained(model_path, use_cache=False)
-        print(f"Model is running on {torch.cuda.device_count()} GPUs.")
-    except Exception as e:
-        raise ValueError(f"Error when loading model and tokenizer from {model_path}:\n{e}")
-    model.eval()
 
-    # Load parameters
-    if mode not in ['summarizer', 'generator', 'direct']:
-        raise ValueError(f"Invalid mode {mode}. Must be 'summarizer', 'generator' or 'direct'.")
+    print(f"\n\n# ----- INFERENCE: mode = {mode}, model = {model_name} ----- #\n\n")
+    model, tokenizer = load_model(model_path)
     instructions = INSTRUCTIONS[mode]
     input_key = KV_PAIRS[mode]['input']
     output_key = KV_PAIRS[mode]['output']
-    if mode == 'generator' and use_gpt_summary:
-        input_key = 'summary'
-        output_key = 'pred_note-gpt'
-        model_name += '-gpt'
-    gen_parameters = PARAMETERS[mode]
-    print(f"\n\n### PARAMETERS:\n\nInstruction 1: {instructions[0]}\nInstruction 2: {instructions[1]}\nInput key: {input_key}\nOutput key: {output_key}\nParameters: {gen_parameters}")
-
-    # Load generation pipeline
-    print(f"\nInitalizing pipeline...")
-    stopping_criteria = None
-    if mode == 'summarizer':
-        template = load_template(template_path)
-        stoppers = ['visit motivation']
-        stops = tokenizer(stoppers, add_special_tokens=False)['input_ids']
-        stopping_criteria = StoppingCriteriaList([StoppingCriteriaSub(stops=stops)])
+    stoppers = ['visit motivation'] if mode == 'summarizer' else []
+    stoppers += [EOS_TOKEN, BOS_TOKEN]
+    stops = [tokenizer(stop, return_tensors='pt')['input_ids'].squeeze() for stop in stoppers]
+    print(f"Stopping criteria: {stoppers}\nStopping ids: {stops}")
     pipe = pipeline("text-generation", 
-                    model=model, 
-                    tokenizer=tokenizer, 
+                    model=model, tokenizer=tokenizer, 
                     eos_token_id=tokenizer.eos_token_id, 
-                    pad_token_id=tokenizer.eos_token_id,
-                    stopping_criteria=stopping_criteria,
-                    **gen_parameters)
-
-    # Load data
-    if output_path and os.path.exists(output_path):
-        print(f"Loading output file from {output_path}...")
+                    pad_token_id=tokenizer.pad_token_id,
+                    stopping_criteria=[CustomStoppingCriteria(stops=stops)],
+                    **PARAMETERS[mode])
+    
+    print(f"\nLoading input file from {input_path}...")
+    data_df = load_file(input_path)
+    if 'idx' not in data_df.columns:
+        data_df['idx'] = data_df.index
+    data_df = data_df.reset_index(drop=True)
+    if os.path.exists(output_path):
+        print(f"Output file found at {output_path}. Loading it.")
         gen_df = load_file(output_path)
-    elif input_path and os.path.exists(input_path):
-        print(f"\nLoading input file from {input_path}...")
-        data_df = load_file(input_path)
-        if 'idx' not in data_df.columns:
-            data_df['idx'] = data_df.index
-        print(f"Initializing output file at {output_path}...")
+    else :
+        print(f"Output file not found at {output_path}. Initializing it.")
         gen_df = data_df.copy()
+        gen_df[output_key] = None
         gen_df['model_name'] = model_name
-    elif input_path:
-        raise FileNotFoundError(f'Input file not found at {input_path}.')
-    else:
-        raise ValueError(f'Input file must be specified if output file is not.')
+
     print('Output file columns: ', list(gen_df.columns))
     if input_key not in gen_df.columns:
         raise ValueError(f'Input key {input_key} not found in dataset.')
@@ -292,22 +285,29 @@ def infer(
     idx_todo = [i for i in idx_todo if gen_df.loc[i][input_key] is not None]
     if len(idx_todo) == 0:
         raise ValueError(f'No samples with input key {input_key} to generate in {input_path}.')
+    template = None if mode != 'summarizer' else load_template(template_path)
 
     # Generate samples
     for i in tqdm(idx_todo, desc='Generating samples'):
         row = gen_df.loc[i]
 
         if mode == 'generator' or mode == 'direct':
-            query = instructions[0] + '\n\n' + row[input_key] + '\n\n' + instructions[1]
+            if mode == 'generator': # Remove all lines containing : "None"
+                input = '\n'.join([line for line in row[input_key].split('\n') if ': \"None\"' not in line])
+            else:
+                input = row[input_key]
+            query = BOS_TOKEN + '\n' + instructions[0] + '\n\n' + input + '\n\n' + instructions[1] + f'{EOS_TOKEN}\n{BOS_TOKEN} '
             if verbose: print(f'\n\n### PROMPT:\n\n{query}')
             answer = pipe(query)[0]['generated_text']
 
         elif mode == 'summarizer':
             answer = infer_summary(row[input_key], pipe, template, instructions, verbose=verbose)
         if verbose: print(f'\n\n### ANSWER: \n\n{answer}')
+        answer = answer.replace(BOS_TOKEN, '').replace(EOS_TOKEN, '').strip()
         
-        gen_df.at[i, output_key] = answer
-        gen_df.at[i, 'model_name'] = model_name
+        new_row = row.copy()
+        new_row.update({'idx': i, 'model_name': model_name, output_key: answer})
+        gen_df = gen_df.append(new_row, ignore_index=True)
         save_file(gen_df, output_path, mode='w')
     return gen_df
     
@@ -341,11 +341,8 @@ if __name__ == "__main__":
     parser.add_argument('--mode',
                         type=str,
                         default='summarizer',
-                        help='Mode of inference: summarizer, generator or direct')
-    parser.add_argument('--use_gpt_summary', 
-                        action='store_true',
-                        default=False,
-                        help='For generator mode only: whether to use GPT-4 summaries as input')
+                        choices=['summarizer', 'generator', 'generator-gpt', 'direct'],
+                        help='Mode of inference: summarizer, generator, generator-gpt or direct')
     parser.add_argument('--verbose',
                         action='store_true',
                         default=False,
