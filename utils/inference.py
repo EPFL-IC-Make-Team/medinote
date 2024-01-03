@@ -386,7 +386,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_name', 
                         type=str, 
-                        default='meditron-7b', 
+                        default='meditron-7b-summarizer', 
                         help='Model name to be loaded.')
     parser.add_argument('--model_path', 
                         type=str, 
@@ -418,4 +418,15 @@ if __name__ == "__main__":
                         default=False,
                         help='Whether to print prompts and answers')
     args = parser.parse_args()
-    infer(**vars(args))
+
+    if 'gpt' in args.model_name:
+        infer_openai(
+            data_path=args.input_path,
+            save_path=args.output_path,
+            openai_model=args.model_name,
+            nb_to_generate=args.num_samples,
+            max_tokens=1000000,
+            temperature=0.2
+        )
+    else:
+        infer(**vars(args))
