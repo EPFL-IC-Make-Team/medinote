@@ -378,11 +378,12 @@ def infer(
         if verbose: print(f'\n\n### ANSWER: \n\n{answer}')
         answer = answer.replace(BOS_TOKEN, '').replace(EOS_TOKEN, '').strip()
         
-        row['model_name'] = model_name
-        row[output_key] = answer
-        gen_df = gen_df.append(row, ignore_index=True)
-        #new_row_df = pd.DataFrame(new_row)
-        #gen_df = pd.concat([gen_df, new_row_df], ignore_index=True)
+        new_row = row.copy()
+        new_row['model_name'] = model_name
+        new_row[output_key] = answer
+        new_row_df = pd.DataFrame([new_row])
+        gen_df = pd.concat([gen_df, new_row_df], ignore_index=True)
+
         save_file(gen_df, output_path, mode='w')
     return gen_df
     
