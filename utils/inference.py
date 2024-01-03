@@ -378,7 +378,6 @@ def infer(
         if verbose: print(f'\n\n### ANSWER: \n\n{answer}')
         answer = answer.replace(BOS_TOKEN, '').replace(EOS_TOKEN, '').strip()
         gen_df.loc[gen_df['idx'] == i, output_key] = answer
-        gen_df.loc[gen_df['idx'] == i, 'model_name'] = model_name
         save_file(gen_df, output_path, mode='w')
     return gen_df
     
