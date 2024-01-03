@@ -95,6 +95,6 @@ if [ "$1" == "gpt3-direct" ] || [ "$1" == "all" ]; then
         --input_path $INPUT_PATH \
         --output_path $OUTPUT_PATH_GPT3 \
         --num_samples $NUM_SAMPLES \
-        --mode direct_gpt \
+        --mode direct-gpt \
         --verbose
 fi
