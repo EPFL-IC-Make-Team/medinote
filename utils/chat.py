@@ -43,8 +43,8 @@ def load_from_pickle(filename):
         return pickle.load(f)
 
 def delete_pickle_file(file_path: str):
-        if os.path.exists(file_path):
-            os.remove(file_path)
+    if os.path.exists(file_path):
+        os.remove(file_path)
 
 async def ask_chat(
         chat: Callable[[List[dict]], Awaitable[str]],   # Chat function to which messages are passed
