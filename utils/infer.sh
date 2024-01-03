@@ -4,6 +4,7 @@ INPUT_PATH=/pure-mlo-scratch/make_project/data/raw/summaries_full_test.jsonl
 OUTPUT_PATH_7B=/pure-mlo-scratch/make_project/data/inference/generation_7B.jsonl
 OUTPUT_PATH_13B=/pure-mlo-scratch/make_project/data/inference/generation_13B.jsonl
 OUTPUT_PATH_GPT3=/pure-mlo-scratch/make_project/data/inference/generation_gpt3.jsonl
+OUTPUT_PATH=/pure-mlo-scratch/make_project/data/evaluation/generation.jsonl
 NUM_SAMPLES=3
 
 if [ "$1" == "meditron-7b-summarizer" ] || [ "$1" == "all" ]; then
@@ -97,4 +98,11 @@ if [ "$1" == "gpt3-direct" ] || [ "$1" == "all" ]; then
         --num_samples $NUM_SAMPLES \
         --mode direct-gpt \
         --verbose
+fi
+
+if [ "$1" == "combine" ] || [ "$1" == "all" ]; then
+    python3 utils/infer.py \
+        --mode combine \
+        --input_path $OUTPUT_PATH_7B, $OUTPUT_PATH_13B, $OUTPUT_PATH_GPT3 \
+        --output_path $OUTPUT_PATH
 fi
