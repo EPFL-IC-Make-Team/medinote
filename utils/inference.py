@@ -340,14 +340,14 @@ def infer(
     if 'idx' not in data_df.columns:
         data_df['idx'] = data_df.index
     data_df = data_df.reset_index(drop=True)
-    if input_key not in data_df.columns:
-        raise ValueError(f'Input key {input_key} not found in data file.')
 
     print(f"Loading output file from {output_path}...")
     if os.path.exists(output_path):
         gen_df = load_file(output_path)
     else:
         gen_df = data_df.copy()
+    if input_key not in gen_df.columns:
+        raise ValueError(f'Input key {input_key} not found in output file.')
     if output_key not in gen_df.columns:
         gen_df[output_key] = None
     
