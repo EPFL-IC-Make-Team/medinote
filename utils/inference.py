@@ -153,7 +153,10 @@ def load_model(model_path):
         raise FileNotFoundError(f'Model not found at {model_path}.')
     try:
         model = AutoModelForCausalLM.from_pretrained(model_path, use_cache=True, device_map="auto")
-        tokenizer = AutoTokenizer.from_pretrained(model_path, use_cache=False)
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_path, 
+            use_cache=False,
+            additional_special_tokens = ['<|im_end|>','<|im_start|>'])
         print(f"Model is running on {torch.cuda.device_count()} GPUs.")
     except Exception as e:
         raise ValueError(f"Error when loading model and tokenizer from {model_path}:\n{e}")
@@ -184,7 +187,7 @@ def infer_summary(dialogue,
     current_answer = {}
     valid = False
     missing = {}
-
+    initial_max_tries = max_tries
     while not valid and max_tries > 0:
         if missing == {}:
             starter = '{\n"visit motivation":'
@@ -203,8 +206,8 @@ def infer_summary(dialogue,
         valid, missing, current_answer = check_summary(partial_answer, current_answer, template)
         max_tries -= 1
     if not valid:
-        if verbose: print(f'Could not generate a valid summary in {max_tries} tries.')
-        return None
+        if verbose: print(f'Could not generate a valid summary in {initial_max_tries} tries.')
+        #return None
     answer = json.dumps(current_answer, indent=4)
     return answer
 
@@ -307,7 +310,8 @@ def infer(
         
         new_row = row.copy()
         new_row.update({'idx': i, 'model_name': model_name, output_key: answer})
-        gen_df = gen_df.append(new_row, ignore_index=True)
+        new_row_df = pd.DataFrame(new_row)
+        gen_df = pd.concat([gen_df, new_row_df], ignore_index=True)
         save_file(gen_df, output_path, mode='w')
     return gen_df
     
