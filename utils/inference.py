@@ -280,7 +280,7 @@ def infer_summary(dialogue,
             missing_dict = formatting(json.dumps(missing, indent=4))
             prompt_end = f'\n\nNow, fill in the following template: \n\n{missing_dict}\n\n{starter}'
             prompt = f'{BOS_TOKEN}\n{instructions[0]}\n\n{dialogue}{prompt_end}\n{EOS_TOKEN}\n{BOS_TOKEN} '
-            if verbose: print(f'\n\n### PROMPT:\n\n{prompt_end}')
+            #if verbose: print(f'\n\n### PROMPT:\n\n{prompt_end}')
         partial_answer = starter + pipe(prompt)[0]['generated_text'].strip()
         limiter = re.search(r'}\s*}', partial_answer)
         if limiter: partial_answer = partial_answer[:limiter.end()].strip()
