@@ -3,6 +3,7 @@
 INPUT_PATH=/pure-mlo-scratch/make_project/data/raw/summaries_full_test.jsonl
 OUTPUT_PATH_7B=/pure-mlo-scratch/make_project/data/inference/generation_7B.jsonl
 OUTPUT_PATH_13B=/pure-mlo-scratch/make_project/data/inference/generation_13B.jsonl
+OUTPUT_PATH_GPT3=/pure-mlo-scratch/make_project/data/inference/generation_gpt3.jsonl
 NUM_SAMPLES=3
 
 if [ "$1" == "meditron-7b-summarizer" ] || [ "$1" == "all" ]; then
@@ -86,5 +87,14 @@ if [ "$1" == "meditron-13b-direct"  ] || [  "$1" == "all" ]; then
         --output_path $OUTPUT_PATH_13B \
         --num_samples $NUM_SAMPLES \
         --mode direct \
+        --verbose
+fi
+if [ "$1" == "gpt3-direct" ] || [ "$1" == "all" ]; then
+    python3 utils/inference.py \
+        --model_name gpt-3.5-turbo \
+        --input_path $INPUT_PATH \
+        --output_path $OUTPUT_PATH_GPT3 \
+        --num_samples $NUM_SAMPLES \
+        --mode direct_gpt \
         --verbose
 fi

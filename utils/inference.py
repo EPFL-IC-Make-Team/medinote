@@ -407,19 +407,19 @@ if __name__ == "__main__":
     parser.add_argument('--template_path',
                         type=str,
                         default='data/template.json',
-                        help='For summarizer mode only: path to the patient summary template')
+                        help='For summarizer mode only: path to the patient summary template.')
     parser.add_argument('--mode',
                         type=str,
                         default='summarizer',
-                        choices=['summarizer', 'generator', 'generator-gpt', 'direct'],
-                        help='Mode of inference: summarizer, generator, generator-gpt or direct')
+                        choices=['summarizer', 'generator', 'generator-gpt', 'direct', 'direct-gpt'],
+                        help='Mode of inference: summarizer, generator, generator-gpt, direct.')
     parser.add_argument('--verbose',
                         action='store_true',
                         default=False,
                         help='Whether to print prompts and answers')
     args = parser.parse_args()
 
-    if 'gpt' in args.model_name:
+    if args.mode == 'direct-gpt':
         infer_openai(
             data_path=args.input_path,
             save_path=args.output_path,
