@@ -247,6 +247,10 @@ def infer_openai(
         save_file(infered_df, save_path, mode = 'w')
         print(f'\nSub-batch {i+1} Saved (size {sub_batch_df.shape[0]})\n')
 
+        if i == len(sub_batches) - 1:
+            print("End of inference.")
+            break
+
         end_time = time.time()
         time_taken = (end_time - start_time)
         breaktime = max(int(60 - time_taken) + 2, 5) 
