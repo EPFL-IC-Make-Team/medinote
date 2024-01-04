@@ -95,11 +95,13 @@ def combine(input_path, output_path):
     '''
     Combine the inferred data into a single file.
     '''
-    paths = input_path.split(',')
-    dfs = [load_file(path) for path in paths]
-    for i, df in enumerate(dfs):
-        df['source'] = paths[i].split('/')[-1].split('.')[0]
-    combined_df = pd.concat(dfs, ignore_index=True)
+    paths = [os.path.join(input_path, f) for f in os.listdir(input_path) if f.endswith('.jsonl')]
+    files = {path.split('/')[-1].split('.')[0]: load_file(path) for path in paths}
+    for source, df in files.items():
+        output_key = [key for key in KV_PAIRS[source].values() if key in df.columns][0]
+        df[output_key] = df[output_key].apply(lambda x: f'{source}: {x}')
+        files[source] = df
+    combined_df = pd.concat(files.values(), ignore_index=True)
     save_file(combined_df, output_path, mode='w')
     return combined_df
     
