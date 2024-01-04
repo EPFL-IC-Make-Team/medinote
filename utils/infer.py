@@ -13,6 +13,7 @@ from transformers import pipeline, StoppingCriteria, StoppingCriteriaList
 import sys
 import os
 import time
+import numpy as np
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 
@@ -102,6 +103,29 @@ def combine(input_path, output_path):
         df[output_key] = df[output_key].apply(lambda x: f'{source}: {x}')
         files[source] = df
     combined_df = pd.concat(files.values(), ignore_index=True)
+    save_file(combined_df, output_path, mode='w')
+    return combined_df
+
+def combine2(input_path, output_path):
+    '''
+    Combine the inferred data into a single file.
+    '''
+    paths = [os.path.join(input_path, f) for f in os.listdir(input_path) if f.endswith('.jsonl')]
+    files = {path.split('/')[-1].split('.')[0]: load_file(path) for path in paths}
+
+    #for _,df in files.items():
+    #    df = df.sort_values(by=['idx'])
+
+    commom_columns = list(set.intersection(*[set(df.columns) for df in files.values()]))
+
+    combined_df = files.items()[0][1]
+
+    for _, df in files.items()[1:]:
+        combined_df = pd.merge(combined_df, df, on=commom_columns, how='inner')
+    
+    if len(combined_df) < len(files.items()[0][1]):
+        raise ValueError(f'Combined dataframe has less rows than the first dataframe.')
+
     save_file(combined_df, output_path, mode='w')
     return combined_df
     
@@ -260,25 +284,32 @@ def infer_openai(
 
     print("Loading model...")
     if openai_model == 'gpt-3.5-turbo':
+        price_per_1ktokens = 0.001
         chat = chat_gpt_3
     elif openai_model == 'gpt-4':
         chat = chat_gpt_4_turbo
+        price_per_1ktokens = 0.01
     else:
         raise ValueError(f'OpenAI model {openai_model} not found.')
     
     print("Building prompts...")
     instruction, usr_prompt = INSTRUCTIONS['direct']
-    prompts = [(f"{instruction}\n\n{few_shot_prompt}{usr_prompt}\n\n{dialogue}", usr_prompt) 
+    prompts = [(f"{instruction}\n\n{few_shot_prompt}\n\n{dialogue}", usr_prompt) 
                for dialogue in data_df[input_key].tolist()]
+    
     data_df['messages'] = [build_messages(*prompt) for prompt in prompts]
+    
     sub_batches = partition(
         dataframe = data_df,
         max_token_per_partition=max_tokens,
         model = openai_model
     )
 
+    total_tokens = np.sum([nb_tok for _, nb_tok in sub_batches])
+    print(f"Total input tokens: {total_tokens}, total input cost: {total_tokens/1000 * price_per_1ktokens}$")
+
     for i, (sub_batch_df, nb_tokens) in enumerate(sub_batches):
-        print(f"Sub_batch {i+1}/{len(sub_batches)}: {sub_batch_df.shape[0]} calls, {nb_tokens} total tokens: {nb_tokens/1000 * 0.001}$")
+        print(f"Sub_batch {i+1}/{len(sub_batches)}: {sub_batch_df.shape[0]} calls, {nb_tokens} total tokens: {nb_tokens/1000 * price_per_1ktokens}$")
         
         start_time = time.time()
         answers = generate_answers(
@@ -294,6 +325,7 @@ def infer_openai(
         gen_df = pd.concat([gen_df, sub_batch_df], ignore_index = True)
         save_file(gen_df, output_path, mode='w')
         print(f'\nSub-batch {i+1} Saved (size {sub_batch_df.shape[0]})\n')
+        delete_pickle_file("safety_save.pkl")
 
         if i == len(sub_batches) - 1:
             print("End of inference.")

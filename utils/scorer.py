@@ -447,7 +447,6 @@ class Scorer():
 
         total_tokens = np.sum([nb_tok for _, nb_tok in sub_batches])
         print(f"Total input tokens: {total_tokens}, total input cost: {total_tokens/1000 * 0.01}$")
-        time.sleep(30)
 
         # Generate answers by batches
         

@@ -46,7 +46,7 @@ ROUGE_SUB_SCORES = ['rouge1', 'rouge2',	'rougeL', 'rougeLsum']
 COUNTS_TYPES = ['missing_keys_count', 'extra_keys_count', 'common_none_count',  
                 'gold_none_count', 'pred_none_count', 'common_non_none', 'all_keys_count']
 KEY_MISMATCH_TYPE = ['gold_none_keys', 'pred_none_keys', 'missing_keys']
-MODELS_TO_COLUMN = {'our_model': 'pred_note', 'gpt_3': 'pred_note_gpt3', 'our_model_direct': 'pred_direct', 'gold' : 'data'}
+#MODELS_TO_COLUMN = {'our_model': 'pred_note', 'gpt_3': 'pred_note_gpt3', 'our_model_direct': 'pred_direct', 'gold' : 'data'}
 from itertools import combinations
 
 
@@ -56,30 +56,34 @@ os.makedirs(EVAL_DIR, exist_ok=True)
 
 # ----------------------- 0 - Prepare Evaluation inputs ----------------------- #
 
-def save_evaluation_input(output_filename, inference_sample,pred_data, gold_data = 'data'):
-    eval_input = inference_sample[['idx', gold_data, pred_data]].dropna()
+def save_evaluation_input(eval_input_filename, inference_df, gold_data, pred_data):
+    eval_input = inference_df[['idx', gold_data, pred_data]].dropna()
     if gold_data == 'summary':
         for key in [gold_data,pred_data]:
             eval_input[key] = eval_input[key].apply(lambda x: json.loads(x.replace('\n', ' ')))
     eval_input = eval_input.rename(columns={gold_data: 'gold', pred_data: 'pred'})
-    save_file(eval_input, os.path.join(EVAL_DIR, output_filename))
+    save_file(eval_input, os.path.join(EVAL_DIR, eval_input_filename))
 
-def build_evaluation_inputs(inference_sample_path, models = MODELS_TO_COLUMN.keys(), summary = True):
-    inference_sample = load_file(inference_sample_path)
-    if summary:
-        save_evaluation_input('summary_eval_input.jsonl', inference_sample, 'pred_summary', 'summary')
+def build_evaluation_inputs(combined_inferences_path, eval_input_dir_path ,models = KV_PAIRS.keys()):
+    combined_inference_sample = load_file(combined_inferences_path)
     for model in models:
-            save_evaluation_input(f'{model}_eval_input.jsonl', inference_sample, MODELS_TO_COLUMN[model])  
+        if model not in KV_PAIRS.keys():
+            raise ValueError(f"Model {model} is not valid. Please choose between {KV_PAIRS.keys()}")
+        save_evaluation_input(f'{eval_input_dir_path}/{model}_evaluation_input.jsonl', combined_inference_sample, KV_PAIRS[model][0], KV_PAIRS[model][1])
+      
     
-    save_elo_inputs('elo_inputs.jsonl', inference_sample, models)
+    save_elo_inputs('elo_inputs.jsonl', combined_inference_sample)
 
-def save_elo_inputs(output_filename, inference_sample, models_to_compare = MODELS_TO_COLUMN.keys()):
+def save_elo_inputs(output_filename, inference_sample, models_to_compare = KV_PAIRS.keys()- 'summarizer'):
     #Selecting columns to keep
+    if 'summarizer' in models_to_compare:
+        raise ValueError("Summarizer cannot be used for Elo ranking.")
+
     if len(models_to_compare) >=2:
-        outputs_notes = inference_sample[['idx'] +[MODELS_TO_COLUMN[model] for model in models_to_compare]].dropna()
+        outputs_notes = inference_sample[['idx', 'data'] +[KV_PAIRS[model][1] for model in models_to_compare]].dropna()
 
         #Renaming columns
-        outputs_notes = outputs_notes.rename(columns={MODELS_TO_COLUMN[model]: model for model in models_to_compare})
+        outputs_notes = outputs_notes.rename(columns={KV_PAIRS[model][1]: model for model in models_to_compare})
         #Possible pair combinations:
         model_pairs = list(combinations(models_to_compare, 2))
 
