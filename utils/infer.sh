@@ -95,6 +95,7 @@ if [ "$1" == "gpt3-direct" ] || [ "$1" == "all" ]; then
         --model_name gpt-3.5-turbo \
         --input_path $INPUT_PATH \
         --output_path $OUTPUT_PATH_GPT3 \
+        --train_path /pure-mlo-scratch/make_project/data/raw/summaries_full_train.jsonl \
         --num_samples $NUM_SAMPLES \
         --mode direct-gpt \
         --verbose
