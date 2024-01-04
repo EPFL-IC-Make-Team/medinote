@@ -268,7 +268,6 @@ def infer_openai(
     instruction, usr_prompt = INSTRUCTIONS['direct']
     prompts = [(f"{instruction}\n\n{few_shot_prompt}{usr_prompt}\n\n{dialogue}", usr_prompt) 
                for dialogue in data_df[input_key].tolist()]
-    print(prompts[0][0])
     data_df['messages'] = [build_messages(*prompt) for prompt in prompts]
     sub_batches = partition(
         dataframe = data_df,
@@ -375,7 +374,7 @@ def infer(
     stoppers = [EOS_TOKEN, BOS_TOKEN]
     stops = [[tokenizer(stop, return_tensors='pt', add_special_tokens=False)[
         'input_ids'].squeeze().tolist()] for stop in stoppers]
-    print(f"Stopping criteria: {stoppers}\nStopping ids: {stops}")
+    #print(f"Stopping criteria: {stoppers}\nStopping ids: {stops}")
     pipe = pipeline("text-generation", 
                     model=model, 
                     tokenizer=tokenizer, 
@@ -465,8 +464,8 @@ if __name__ == "__main__":
                         choices=['summarizer', 'generator', 'generator-gpt', 'direct', 'direct-gpt'],
                         help='Mode of inference: summarizer, generator, generator-gpt, direct.')
     parser.add_argument('--verbose',
-                        action='store_true',
-                        default=False,
+                        type=int,
+                        default=1,
                         help='Whether to print prompts and answers')
     parser.add_argument('--combine',
                         action='store_true',
@@ -489,6 +488,13 @@ if __name__ == "__main__":
             temperature=1.0,
         )
     else:
-        args_dict = vars(args)
-        args_dict.pop('train_path')
-        infer(**args_dict)
+        infer(
+            model_name=args.model_name,
+            model_path=args.model_path,
+            input_path=args.input_path,
+            output_path=args.output_path,
+            num_samples=args.num_samples,
+            template_path=args.template_path,
+            mode=args.mode,
+            verbose=args.verbose
+        )

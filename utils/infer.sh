@@ -6,6 +6,7 @@ OUTPUT_PATH_13B=/pure-mlo-scratch/make_project/data/inference/meditron_13B.jsonl
 OUTPUT_PATH_GPT3=/pure-mlo-scratch/make_project/data/inference/gpt3.jsonl
 OUTPUT_PATH=/pure-mlo-scratch/make_project/data/evaluation/generation.jsonl
 NUM_SAMPLES=1000
+VERBOSE=0
 
 if [ "$1" == "meditron-7b-summarizer" ] || [ "$1" == "all" ]; then
     python3 utils/infer.py \
@@ -16,7 +17,7 @@ if [ "$1" == "meditron-7b-summarizer" ] || [ "$1" == "all" ]; then
         --num_samples $NUM_SAMPLES \
         --mode summarizer \
         --template_path /pure-mlo-scratch/make_project/ClinicalNotes/generation/templates/template.json \
-        --verbose
+        --verbose $VERBOSE
 fi     
 if [ "$1" == "meditron-7b-generator"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
@@ -26,7 +27,7 @@ if [ "$1" == "meditron-7b-generator"  ] || [  "$1" == "all" ]; then
         --output_path $OUTPUT_PATH_7B \
         --num_samples $NUM_SAMPLES \
         --mode generator  \
-        --verbose
+        --verbose $VERBOSE
 fi
 if [ "$1" == "meditron-7b-generator-gpt"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
@@ -35,9 +36,8 @@ if [ "$1" == "meditron-7b-generator-gpt"  ] || [  "$1" == "all" ]; then
         --input_path $INPUT_PATH \
         --output_path $OUTPUT_PATH_7B \
         --num_samples $NUM_SAMPLES \
-        --mode generator  \
-        --verbose \
-        --use_gpt_summary
+        --mode generator-gpt  \
+        --verbose $VERBOSE
 fi
 if [ "$1" == "meditron-7b-direct"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
@@ -47,7 +47,7 @@ if [ "$1" == "meditron-7b-direct"  ] || [  "$1" == "all" ]; then
         --output_path $OUTPUT_PATH_7B \
         --num_samples $NUM_SAMPLES \
         --mode direct \
-        --verbose
+        --verbose $VERBOSE
 fi
 if [ "$1" == "meditron-13b-summarizer"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
@@ -58,7 +58,7 @@ if [ "$1" == "meditron-13b-summarizer"  ] || [  "$1" == "all" ]; then
         --num_samples $NUM_SAMPLES \
         --mode summarizer \
         --template_path /pure-mlo-scratch/make_project/ClinicalNotes/generation/templates/template.json \
-        --verbose
+        --verbose $VERBOSE
 fi
 if [ "$1" == "meditron-13b-generator"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
@@ -68,7 +68,7 @@ if [ "$1" == "meditron-13b-generator"  ] || [  "$1" == "all" ]; then
         --output_path $OUTPUT_PATH_13B \
         --num_samples $NUM_SAMPLES \
         --mode generator \
-        --verbose
+        --verbose $VERBOSE
 fi
 if [ "$1" == "meditron-13b-generator-gpt"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
@@ -77,8 +77,8 @@ if [ "$1" == "meditron-13b-generator-gpt"  ] || [  "$1" == "all" ]; then
         --input_path $INPUT_PATH \
         --output_path $OUTPUT_PATH_13B \
         --num_samples $NUM_SAMPLES \
-        --mode generator  \
-        --verbose
+        --mode generator-gpt  \
+        --verbose $VERBOSE
 fi
 if [ "$1" == "meditron-13b-direct"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
@@ -88,7 +88,7 @@ if [ "$1" == "meditron-13b-direct"  ] || [  "$1" == "all" ]; then
         --output_path $OUTPUT_PATH_13B \
         --num_samples $NUM_SAMPLES \
         --mode direct \
-        --verbose
+        --verbose $VERBOSE
 fi
 if [ "$1" == "gpt3-direct" ] || [ "$1" == "all" ]; then
     python3 utils/infer.py \
@@ -98,7 +98,7 @@ if [ "$1" == "gpt3-direct" ] || [ "$1" == "all" ]; then
         --train_path /pure-mlo-scratch/make_project/data/raw/summaries_full_train.jsonl \
         --num_samples $NUM_SAMPLES \
         --mode direct-gpt \
-        --verbose
+        --verbose $VERBOSE
 fi
 
 if [ "$1" == "combine" ] || [ "$1" == "all" ]; then
