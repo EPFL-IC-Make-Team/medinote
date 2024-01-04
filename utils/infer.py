@@ -219,8 +219,7 @@ def load_model(model_path):
         model = AutoModelForCausalLM.from_pretrained(model_path, use_cache=True, device_map="auto")
         tokenizer = AutoTokenizer.from_pretrained(
             model_path, 
-            use_cache=False,
-            additional_special_tokens = ['<|im_end|>','<|im_start|>'])
+            use_cache=False)
         print(f"Model is running on {torch.cuda.device_count()} GPUs.")
     except Exception as e:
         raise ValueError(f"Error when loading model and tokenizer from {model_path}:\n{e}")
@@ -406,9 +405,8 @@ def infer(
     input_key = KV_PAIRS[mode]['input']
     output_key = KV_PAIRS[mode]['output']
     stoppers = [EOS_TOKEN, BOS_TOKEN]
-    stops = [[tokenizer(stop, return_tensors='pt', add_special_tokens=False)[
-        'input_ids'].squeeze().tolist()] for stop in stoppers]
-    #print(f"Stopping criteria: {stoppers}\nStopping ids: {stops}")
+    stops = [tokenizer.encode(stop)[0] for stop in stoppers if stop in tokenizer.get_vocab().keys()]
+    print(f"Stopping criteria: {stoppers}\nStopping ids: {stops}")
     pipe = pipeline("text-generation", 
                     model=model, 
                     tokenizer=tokenizer, 
