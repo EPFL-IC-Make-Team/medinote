@@ -215,6 +215,8 @@ def infer_openai(
     '''
     Generate clinical notes from conversations using an OpenAI model. 
     '''
+    input_key = KV_PAIRS['direct-gpt']['input']
+    output_key = KV_PAIRS['direct-gpt']['output']
     
     print("Loading data...")
     data_df = load_file(input_path)
@@ -256,8 +258,6 @@ def infer_openai(
     gen_df['model_name'] = openai_model
     
     print("Building prompts...")
-    input_key = KV_PAIRS['direct-gpt']['input']
-    output_key = KV_PAIRS['direct-gpt']['output']
     instruction, usr_prompt = INSTRUCTIONS['direct']
     prompts = [(f"{instruction}\n\n{few_shot_prompt}{dialogue}", usr_prompt) 
                for dialogue in data_df[input_key].tolist()]
