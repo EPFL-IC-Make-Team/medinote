@@ -103,6 +103,6 @@ fi
 if [ "$1" == "combine" ] || [ "$1" == "all" ]; then
     python3 utils/infer.py \
         --mode combine \
-        --input_path $OUTPUT_PATH_7B, $OUTPUT_PATH_13B, $OUTPUT_PATH_GPT3 \
+        --input_path $OUTPUT_PATH_7B,$OUTPUT_PATH_13B,$OUTPUT_PATH_GPT3 \
         --output_path $OUTPUT_PATH
 fi

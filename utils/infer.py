@@ -40,6 +40,10 @@ KV_PAIRS = {
     'direct': {
         'input': 'conversation',
         'output': 'pred_direct',
+    },
+    'direct-gpt': {
+        'input': 'conversation',
+        'output': 'pred_direct-gpt',
     }
 }
 
@@ -81,8 +85,28 @@ PARAMETERS = {
     }
 }
 
+# ----------------------- Inference utilities ----------------------- #
 
-# ----------------------- Summarizer inference utilities ----------------------- #
+def combine(input_path, output_path):
+    '''
+    Combine the inferred data into a single file.
+    '''
+    paths = input_path.split(',')
+    dfs = [load_file(path) for path in paths]
+    
+
+def todo_list(data_df, gen_df, output_key, num_samples):
+    '''
+    Returns the list of samples to generate. 
+    '''
+    idx_todo = data_df['idx'].tolist()
+    if num_samples and len(idx_todo) > num_samples:
+        idx_todo = idx_todo[:num_samples]
+    idx_done = gen_df[gen_df[output_key].notnull()]['idx'].tolist()
+    idx_todo = [i for i in idx_todo if i not in idx_done]
+    if len(idx_todo) == 0:
+        raise ValueError(f'All samples already generated.')
+    return idx_todo
 
 class CustomStoppingCriteria(StoppingCriteria):
 
@@ -96,6 +120,9 @@ class CustomStoppingCriteria(StoppingCriteria):
                 return True
         return False
 
+
+# ----------------------- Summarizer inference utilities ----------------------- #
+    
 def load_template(template_path):
     '''
     Loads the JSON patient summary template from the path. 
@@ -177,31 +204,47 @@ def load_model(model_path):
 # ----------------------- Inference pipeline ----------------------- #
     
 def infer_openai(
-        data_path,
-        save_path,
+        input_path,
+        output_path,
+        train_path = None,
         max_tokens = 1000000,
-        nb_to_generate = 1000, 
-        openai_model ='gpt-3.5-turbo',
-        temperature=0.2):
+        num_samples = 1000, 
+        openai_model = 'gpt-3.5-turbo',
+        temperature = 0.2,
+        shots = 1):
     '''
     Generate clinical notes from conversations using an OpenAI model. 
     '''
     
     print("Loading data...")
-    if os.path.exists(data_path):
-        dialogues_df = pd.read_json(data_path, lines=True, nrows=nb_to_generate, orient='records')
+    data_df = load_file(input_path)
+    if 'idx' not in data_df.columns:
+        data_df['idx'] = data_df.index
+    data_df = data_df.reset_index(drop=True)
+    
+    if train_path is not None and shots > 0:
+        print(f'Loading {shots}-shot exemplar from {train_path}...')
+        train_df = load_file(train_path)
+        sample = train_df.sample(shots)
+        few_shot_prompt = f"Here are {shots} examples of patient-doctor conversations and their corresponding clinical notes.\n\n"
+        for i in range(shots):
+            dialogue = sample.iloc[i]['conversation']
+            note = sample.iloc[i]['full_note']
+            few_shot_prompt += f'Example {i+1}:\n\nConversation:\n\n{dialogue}\n\nClinical note:\n\n{note}\n\n'
+    else: 
+        few_shot_prompt = ''
+
+    print(f"Loading output file from {output_path}...")
+    if os.path.exists(output_path):
+        gen_df = load_file(output_path)
     else:
-        raise FileNotFoundError(f'Data not found at {data_path}.')
-    if os.path.exists(save_path):
-        gen_df = load_file(save_path)
-        gen_df = gen_df[gen_df['pred_note'] != 'NA'].reset_index(drop = True)
-        ids_done = gen_df['idx'].tolist()
-    else:
-        gen_df = pd.DataFrame(columns = dialogues_df.columns)
-        ids_done = []
-    if len(ids_done) > 0:
-        print(f'{len(ids_done)} generations already done. Skipping them.')
-        dialogues_df = dialogues_df[~dialogues_df['idx'].isin(ids_done)]
+        gen_df = data_df.copy()
+    if input_key not in gen_df.columns:
+        raise ValueError(f'Input key {input_key} not found in output file.')
+    if output_key not in gen_df.columns:
+        gen_df[output_key] = None
+    idx_todo = todo_list(data_df, gen_df, output_key, num_samples)
+    data_df = data_df[data_df['idx'].isin(idx_todo)]
 
     print("Loading model...")
     if openai_model == 'gpt-3.5-turbo':
@@ -210,24 +253,20 @@ def infer_openai(
         chat = chat_gpt_4_turbo
     else:
         raise ValueError(f'OpenAI model {openai_model} not found.')
-    dialogues_df['model_name'] = openai_model
+    gen_df['model_name'] = openai_model
     
     print("Building prompts...")
-    instruction, usr_prompt = INSTRUCTIONS['summarizer']
-    prompts = [(f"{instruction}\n\n{dialogue}", usr_prompt) for dialogue in tqdm(
-        dialogues_df['conversation'].tolist(), 
-        total = len(dialogues_df), 
-        desc = 'Building prompts')]
-    dialogues_df['messages'] = [build_messages(*prompt) for prompt in tqdm(
-        prompts, 
-        total = len(prompts), 
-        desc = 'Building messages')]
+    input_key = KV_PAIRS['direct-gpt']['input']
+    output_key = KV_PAIRS['direct-gpt']['output']
+    instruction, usr_prompt = INSTRUCTIONS['direct']
+    prompts = [(f"{instruction}\n\n{few_shot_prompt}{dialogue}", usr_prompt) 
+               for dialogue in data_df[input_key].tolist()]
+    data_df['messages'] = [build_messages(*prompt) for prompt in prompts]
     sub_batches = partition(
-        dataframe = dialogues_df,
+        dataframe = data_df,
         max_token_per_partition=max_tokens,
         model = openai_model
     )
-    infered_df = pd.DataFrame(columns = dialogues_df.columns)
 
     for i, (sub_batch_df, nb_tokens) in enumerate(sub_batches):
         print(f"Sub_batch {i+1}/{len(sub_batches)}: {sub_batch_df.shape[0]} calls, {nb_tokens} total tokens: {nb_tokens/1000 * 0.001}$")
@@ -240,11 +279,10 @@ def infer_openai(
             temperature = temperature
         )
 
-        sub_batch_df[f'pred_note'] = answers
+        sub_batch_df[output_key] = answers
         sub_batch_df.drop(columns = ['messages'], inplace = True)
-        ids_done.extend(sub_batch_df['idx'].tolist())
-        infered_df = pd.concat([infered_df, sub_batch_df], ignore_index = True)
-        save_file(infered_df, save_path, mode = 'w')
+        gen_df = pd.concat([gen_df, sub_batch_df], ignore_index = True)
+        save_file(gen_df, output_path, mode='w')
         print(f'\nSub-batch {i+1} Saved (size {sub_batch_df.shape[0]})\n')
 
         if i == len(sub_batches) - 1:
@@ -258,10 +296,10 @@ def infer_openai(
         time.sleep(breaktime)
         print("End of break.")
 
-    return infered_df
+    return gen_df
 
 def infer_summary(dialogue, 
-                  pipe, 
+                  generate, 
                   template, 
                   instructions, 
                   max_tries=3, 
@@ -284,7 +322,7 @@ def infer_summary(dialogue,
             prompt_end = f'\n\nNow, fill in the following template: \n\n{missing_dict}\n\n{starter}'
             prompt = f'{BOS_TOKEN}\n{instructions[0]}\n\n{dialogue}{prompt_end}\n{EOS_TOKEN}\n{BOS_TOKEN} '
             #if verbose: print(f'\n\n### PROMPT:\n\n{prompt_end}')
-        partial_answer = starter + pipe(prompt)[0]['generated_text'].strip()
+        partial_answer = starter + generate(prompt).strip()
         limiter = re.search(r'}\s*}', partial_answer)
         if limiter: partial_answer = partial_answer[:limiter.end()].strip()
         valid, missing, current_answer = check_summary(partial_answer, current_answer, template)
@@ -337,12 +375,14 @@ def infer(
                     pad_token_id=tokenizer.pad_token_id,
                     stopping_criteria=[CustomStoppingCriteria(stops=stops)],
                     **PARAMETERS[mode])
+    generate = lambda x: pipe(x)[0]['generated_text']
     
     print(f"\nLoading data file from {input_path}...")
     data_df = load_file(input_path)
     if 'idx' not in data_df.columns:
         data_df['idx'] = data_df.index
     data_df = data_df.reset_index(drop=True)
+    template = None if mode != 'summarizer' else load_template(template_path)
 
     print(f"Loading output file from {output_path}...")
     if os.path.exists(output_path):
@@ -354,54 +394,50 @@ def infer(
     if output_key not in gen_df.columns:
         gen_df[output_key] = None
     
-    # Check which samples to generate
-    idx_todo = data_df['idx'].tolist()
-    if num_samples and len(idx_todo) > num_samples:
-        idx_todo = idx_todo[:num_samples]
-    idx_done = gen_df[gen_df[output_key].notnull()]['idx'].tolist()
-    idx_todo = [i for i in idx_todo if i not in idx_done]
-    if len(idx_todo) == 0:
-        raise ValueError(f'All samples already generated in {input_path}.')
-    template = None if mode != 'summarizer' else load_template(template_path)
+    idx_todo = todo_list(data_df, gen_df, output_key, num_samples)
 
     # Generate samples
     for i in tqdm(idx_todo, desc='Generating samples'):
         row = gen_df[gen_df['idx'] == i].iloc[0]
 
-        if mode == 'generator' or mode == 'direct':
+        if mode == 'generator' or mode == 'direct' or mode == 'generator_gpt':
             input = row[input_key]
-            if mode == 'generator':
+            if 'generator' in mode:
                 input = '\n'.join([line for line in input.split('\n') if ': \"None\"' not in line])
             query = f"{BOS_TOKEN}\n{instructions[0]}\n\n{input}\n\n{instructions[1]}{EOS_TOKEN}\n{BOS_TOKEN} "
             if verbose: print(f'\n\n### PROMPT:\n\n{query}')
-            answer = pipe(query)[0]['generated_text']
+            answer = generate(query)
 
         elif mode == 'summarizer':
-            answer = infer_summary(row[input_key], pipe, template, instructions, verbose=verbose)
+            answer = infer_summary(row[input_key], generate, template, instructions, verbose=verbose)
+
         if verbose: print(f'\n\n### ANSWER: \n\n{answer}')
         answer = answer.replace(BOS_TOKEN, '').replace(EOS_TOKEN, '').strip()
         gen_df.loc[gen_df['idx'] == i, output_key] = answer
         save_file(gen_df, output_path, mode='w')
+
     return gen_df
     
+
+# ----------------------- Main ----------------------- #
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_name', 
                         type=str, 
-                        default='meditron-7b-summarizer', 
+                        required=True,
                         help='Model name to be loaded.')
     parser.add_argument('--model_path', 
                         type=str, 
-                        default='/pure-mlo-scratch/make_project/trial-runs/meditron-7b-summarizer/hf_checkpoint/', 
+                        required=True,
                         help='Path to the model.')
     parser.add_argument('--input_path', 
                         type=str, 
-                        default=None,
+                        required=True,
                         help='Path to the data file.')
     parser.add_argument('--output_path', 
                         type=str,
-                        default=None, 
+                        required=True,
                         help='Path to the output file with generated notes. ')
     parser.add_argument('--num_samples',
                         type=int,
@@ -411,6 +447,10 @@ if __name__ == "__main__":
                         type=str,
                         default='data/template.json',
                         help='For summarizer mode only: path to the patient summary template.')
+    parser.add_argument('--train_path',
+                        type=str,
+                        default=None,
+                        help='Path to the training data file. Used to sample few-shot examples for direct-gpt inference.')
     parser.add_argument('--mode',
                         type=str,
                         default='summarizer',
@@ -420,12 +460,22 @@ if __name__ == "__main__":
                         action='store_true',
                         default=False,
                         help='Whether to print prompts and answers')
+    parser.add_argument('--combine',
+                        action='store_true',
+                        default=False,
+                        help='Whether to combine the generated notes into a single file.')
     args = parser.parse_args()
 
-    if args.mode == 'direct-gpt':
+    if args.combine: 
+        combine(
+            input_path=args.input_path, 
+            output_path=args.output_path)
+
+    elif args.mode == 'direct-gpt':
         infer_openai(
-            data_path=args.input_path,
-            save_path=args.output_path,
+            input_path=args.input_path,
+            output_path=args.output_path,
+            train_path=args.train_path,
             openai_model=args.model_name,
             nb_to_generate=args.num_samples,
             max_tokens=1000000,
