@@ -489,4 +489,6 @@ if __name__ == "__main__":
             temperature=1.0,
         )
     else:
-        infer(**vars(args))
+        args_dict = vars(args)
+        args_dict.pop('train_path')
+        infer(**args_dict)
