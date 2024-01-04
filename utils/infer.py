@@ -227,7 +227,19 @@ def infer_openai(
     if 'idx' not in data_df.columns:
         data_df['idx'] = data_df.index
     data_df = data_df.reset_index(drop=True)
-    
+    if input_key not in data_df.columns:
+        raise ValueError(f'Input key {input_key} not found in output file.')
+
+    print(f"Loading output file from {output_path}...")
+    if os.path.exists(output_path):
+        gen_df = load_file(output_path)
+    else:
+        gen_df = pd.DataFrame(columns = data_df.columns)
+    if output_key not in gen_df.columns:
+        gen_df[output_key] = None
+    idx_todo = todo_list(data_df, gen_df, output_key, num_samples)
+    data_df = data_df[data_df['idx'].isin(idx_todo)]
+
     if train_path is not None and shots > 0:
         print(f'Loading {shots}-shot exemplar from {train_path}...')
         train_df = load_file(train_path)
@@ -240,18 +252,6 @@ def infer_openai(
     else: 
         few_shot_prompt = ''
 
-    print(f"Loading output file from {output_path}...")
-    if os.path.exists(output_path):
-        gen_df = load_file(output_path)
-    else:
-        gen_df = data_df.copy()
-    if input_key not in gen_df.columns:
-        raise ValueError(f'Input key {input_key} not found in output file.')
-    if output_key not in gen_df.columns:
-        gen_df[output_key] = None
-    idx_todo = todo_list(data_df, gen_df, output_key, num_samples)
-    data_df = data_df[data_df['idx'].isin(idx_todo)]
-
     print("Loading model...")
     if openai_model == 'gpt-3.5-turbo':
         chat = chat_gpt_3
@@ -259,7 +259,6 @@ def infer_openai(
         chat = chat_gpt_4_turbo
     else:
         raise ValueError(f'OpenAI model {openai_model} not found.')
-    gen_df['model_name'] = openai_model
     
     print("Building prompts...")
     instruction, usr_prompt = INSTRUCTIONS['direct']
@@ -285,6 +284,7 @@ def infer_openai(
         )
 
         sub_batch_df[output_key] = answers
+        sub_batch_df['model_name'] = openai_model
         sub_batch_df.drop(columns = ['messages'], inplace = True)
         gen_df = pd.concat([gen_df, sub_batch_df], ignore_index = True)
         save_file(gen_df, output_path, mode='w')
