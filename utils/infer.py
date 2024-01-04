@@ -97,8 +97,10 @@ def combine(input_path, output_path):
     '''
     paths = input_path.split(',')
     dfs = [load_file(path) for path in paths]
+    combined_df = pd.concat(dfs, ignore_index=True)
+    save_file(combined_df, output_path, mode='w')
+    return combined_df
     
-
 def todo_list(data_df, gen_df, output_key, num_samples):
     '''
     Returns the list of samples to generate. 
@@ -471,9 +473,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.combine: 
-        combine(
-            input_path=args.input_path, 
-            output_path=args.output_path)
+        combine(input_path=args.input_path, 
+                output_path=args.output_path)
 
     elif args.mode == 'direct-gpt':
         infer_openai(
