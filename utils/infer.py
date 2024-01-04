@@ -49,15 +49,19 @@ KV_PAIRS = {
 
 INSTRUCTIONS = {
     'summarizer': [
-        'Given the provided patient-doctor dialogue, write the corresponding patient information summary in JSON format.\nMake sure to extract all the information from the dialogue into the template, but do not add any new information. \nIf a field is not mentioned, simply write \"feature\": \"None\".',
+        """Given the provided patient-doctor dialogue, write the corresponding patient information summary in JSON format.
+        Make sure to extract all the information from the dialogue into the template, but do not add any new information. 
+        If a field is not mentioned, simply write \"feature\": \"None\".""",
         'Now, generate the full patient summary: '
     ],
     'generator': [
-        'Given the provided JSON patient information summary, generate the corresponding clinical note as written by a physician.\nMake sure to use all the information from the dialogue into the note, but do not add any new information.',
+        """Given the provided JSON patient information summary, generate the corresponding clinical note as written by a physician.
+        Make sure to use all the information from the dialogue into the note, but do not add any new information.""",
         'Now, generate the corresponding clinical note: '
     ],
     'direct': [
-        'Given the provided patient-doctor conversation, generate the corresponding clinical note as written by the physician. \nMake sure to use all the information from the dialogue into the note, but do not add any new information.',
+        """Given the provided patient-doctor conversation, generate the corresponding clinical note as written by the physician.
+        Make sure to use all the information from the dialogue into the note, but do not add any new information.""",
         'Now, generate the corresponding clinical note: '
     ]
 }
@@ -261,6 +265,7 @@ def infer_openai(
     instruction, usr_prompt = INSTRUCTIONS['direct']
     prompts = [(f"{instruction}\n\n{few_shot_prompt}{dialogue}", usr_prompt) 
                for dialogue in data_df[input_key].tolist()]
+    print("PROMPT EXAMPLE:\n\n", prompts[0])
     data_df['messages'] = [build_messages(*prompt) for prompt in prompts]
     sub_batches = partition(
         dataframe = data_df,
@@ -294,7 +299,6 @@ def infer_openai(
         breaktime = max(int(60 - time_taken) + 2, 5) 
         print(f"\nBreak for {breaktime} seconds.")
         time.sleep(breaktime)
-        print("End of break.")
 
     return gen_df
 
@@ -479,7 +483,7 @@ if __name__ == "__main__":
             openai_model=args.model_name,
             num_samples=args.num_samples,
             max_tokens=1000000,
-            temperature=0.2
+            temperature=1.0,
         )
     else:
         infer(**vars(args))
