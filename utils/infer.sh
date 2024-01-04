@@ -1,11 +1,11 @@
 #!/bin/bash
 
 INPUT_PATH=/pure-mlo-scratch/make_project/data/raw/summaries_full_test.jsonl
-OUTPUT_PATH_7B=/pure-mlo-scratch/make_project/data/inference/generation_7B.jsonl
-OUTPUT_PATH_13B=/pure-mlo-scratch/make_project/data/inference/generation_13B.jsonl
-OUTPUT_PATH_GPT3=/pure-mlo-scratch/make_project/data/inference/generation_gpt3.jsonl
+OUTPUT_PATH_7B=/pure-mlo-scratch/make_project/data/inference/meditron_7B.jsonl
+OUTPUT_PATH_13B=/pure-mlo-scratch/make_project/data/inference/meditron_13B.jsonl
+OUTPUT_PATH_GPT3=/pure-mlo-scratch/make_project/data/inference/gpt3.jsonl
 OUTPUT_PATH=/pure-mlo-scratch/make_project/data/evaluation/generation.jsonl
-NUM_SAMPLES=3
+NUM_SAMPLES=1000
 
 if [ "$1" == "meditron-7b-summarizer" ] || [ "$1" == "all" ]; then
     python3 utils/infer.py \

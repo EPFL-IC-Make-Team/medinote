@@ -97,6 +97,8 @@ def combine(input_path, output_path):
     '''
     paths = input_path.split(',')
     dfs = [load_file(path) for path in paths]
+    for i, df in enumerate(dfs):
+        df['source'] = paths[i].split('/')[-1].split('.')[0]
     combined_df = pd.concat(dfs, ignore_index=True)
     save_file(combined_df, output_path, mode='w')
     return combined_df
