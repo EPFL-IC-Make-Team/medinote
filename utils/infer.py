@@ -263,9 +263,9 @@ def infer_openai(
     
     print("Building prompts...")
     instruction, usr_prompt = INSTRUCTIONS['direct']
-    prompts = [(f"{instruction}\n\n{few_shot_prompt}{dialogue}", usr_prompt) 
+    prompts = [(f"{instruction}\n\n{few_shot_prompt}{usr_prompt}\n\n{dialogue}", usr_prompt) 
                for dialogue in data_df[input_key].tolist()]
-    print("PROMPT EXAMPLE:\n\n", prompts[0])
+    print(prompts[0][0])
     data_df['messages'] = [build_messages(*prompt) for prompt in prompts]
     sub_batches = partition(
         dataframe = data_df,
