@@ -477,7 +477,7 @@ if __name__ == "__main__":
             output_path=args.output_path,
             train_path=args.train_path,
             openai_model=args.model_name,
-            nb_to_generate=args.num_samples,
+            num_samples=args.num_samples,
             max_tokens=1000000,
             temperature=0.2
         )
