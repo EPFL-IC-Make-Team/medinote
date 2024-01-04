@@ -429,7 +429,7 @@ if __name__ == "__main__":
                         help='Model name to be loaded.')
     parser.add_argument('--model_path', 
                         type=str, 
-                        required=True,
+                        default=None,
                         help='Path to the model.')
     parser.add_argument('--input_path', 
                         type=str, 
