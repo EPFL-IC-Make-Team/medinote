@@ -51,18 +51,23 @@ KV_PAIRS = {
 INSTRUCTIONS = {
     'summarizer': [
         """Given the provided patient-doctor dialogue, write the corresponding patient information summary in JSON format.
-        Make sure to extract all the information from the dialogue into the template, but do not add any new information. 
-        If a field is not mentioned, simply write \"feature\": \"None\".""",
+Make sure to extract all the information from the dialogue into the template, but do not add any new information. 
+If a field is not mentioned, simply write \"feature\": \"None\".""",
         'Now, generate the full patient summary: '
     ],
     'generator': [
         """Given the provided JSON patient information summary, generate the corresponding clinical note as written by a physician.
-        Make sure to use all the information from the dialogue into the note, but do not add any new information.""",
+Make sure to use all the information from the dialogue into the note, but do not add any new information.""",
+        'Now, generate the corresponding clinical note: '
+    ],
+    'generator-gpt': [
+        """Given the provided JSON patient information summary, generate the corresponding clinical note as written by a physician.
+Make sure to use all the information from the dialogue into the note, but do not add any new information.""",
         'Now, generate the corresponding clinical note: '
     ],
     'direct': [
         """Given the provided patient-doctor conversation, generate the corresponding clinical note as written by the physician.
-        Make sure to use all the information from the dialogue into the note, but do not add any new information.""",
+Make sure to use all the information from the dialogue into the note, but do not add any new information.""",
         'Now, generate the corresponding clinical note: '
     ]
 }
@@ -78,13 +83,22 @@ PARAMETERS = {
     },
     'generator' : {
         'max_length': 2048, 
-        'do_sample': False,
+        'do_sample': True,
+        'temperature': 0.7,
+        'num_return_sequences': 1,
+        'return_full_text': False
+    },
+    'generator-gpt' : {
+        'max_length': 2048, 
+        'do_sample': True,
+        'temperature': 0.7,
         'num_return_sequences': 1,
         'return_full_text': False
     },
     'direct' : {
         'max_length': 2048,
-        'do_sample': False,
+        'do_sample': True,
+        'temperature': 0.7,
         'num_return_sequences': 1,
         'return_full_text': False
     }
@@ -140,6 +154,10 @@ def todo_list(data_df, gen_df, output_key, num_samples):
     idx_todo = [i for i in idx_todo if i not in idx_done]
     if len(idx_todo) == 0:
         raise ValueError(f'All samples already generated.')
+    if 'input_key' in gen_df.columns:
+        idx_todo = [i for i in idx_todo if gen_df[gen_df['idx'] == i]['input_key'].iloc[0] is not None]
+    if len(idx_todo) == 0:
+        raise ValueError(f'Samples left to generate but their input is None.')
     return idx_todo
 
 class CustomStoppingCriteria(StoppingCriteria):
@@ -225,11 +243,10 @@ def load_model(model_path):
         raise ValueError(f"Error when loading model and tokenizer from {model_path}:\n{e}")
     model.eval()
 
-    #vocabulary = tokenizer.get_vocab().keys()
-    #if EOS_TOKEN not in vocabulary and BOS_TOKEN not in vocabulary:
-    #    print('EOS_TOKEN and BOS_TOKEN not found in tokenizer vocabulary. Adding them.')
-    #    tokenizer.add_special_tokens({'eos_token': EOS_TOKEN, 'bos_token': BOS_TOKEN})
-    #    model.resize_token_embeddings(len(tokenizer))
+    # Check model embedding size
+    if len(tokenizer) != model.config.vocab_size:
+        print(f"Resizing model embedding layer from {model.config.vocab_size} to {len(tokenizer)}...")
+        model.resize_token_embeddings(len(tokenizer))
 
     return model, tokenizer
 
@@ -405,7 +422,7 @@ def infer(
     input_key = KV_PAIRS[mode]['input']
     output_key = KV_PAIRS[mode]['output']
     stoppers = [EOS_TOKEN, BOS_TOKEN]
-    stops = [tokenizer.encode(stop)[0] for stop in stoppers if stop in tokenizer.get_vocab().keys()]
+    stops = [tokenizer.encode(stop)[1:] for stop in stoppers if stop in tokenizer.get_vocab().keys()]
     print(f"Stopping criteria: {stoppers}\nStopping ids: {stops}")
     pipe = pipeline("text-generation", 
                     model=model, 
@@ -438,8 +455,10 @@ def infer(
     # Generate samples
     for i in tqdm(idx_todo, desc='Generating samples'):
         row = gen_df[gen_df['idx'] == i].iloc[0]
+        if mode == 'generator' and row[input_key] is None: 
+            raise ValueError(f'Input key {input_key} not found when generating clinical note for sample {i}.')
 
-        if mode == 'generator' or mode == 'direct' or mode == 'generator_gpt':
+        if mode == 'generator' or mode == 'direct' or mode == 'generator-gpt':
             input = row[input_key]
             if 'generator' in mode:
                 input = '\n'.join([line for line in input.split('\n') if ': \"None\"' not in line])
