@@ -260,7 +260,7 @@ def infer_openai(
         max_tokens = 1000000,
         num_samples = 1000, 
         openai_model = 'gpt-3.5-turbo',
-        temperature = 0.2,
+        temperature = 0,
         shots = 1):
     '''
     Generate clinical notes from conversations using an OpenAI model. 
@@ -290,13 +290,13 @@ def infer_openai(
         print(f'Loading {shots}-shot exemplar from {train_path}...')
         train_df = load_file(train_path)
         sample = train_df.sample(shots)
-        few_shot_prompt = f"Here are {shots} examples of patient-doctor conversations and their corresponding clinical notes.\n\n"
+        few_shot_prompt = f"Here are {shots} example(s) of patient-doctor conversations and their corresponding clinical notes.\n\n"
         for i in range(shots):
             dialogue = sample.iloc[i]['conversation']
-            note = sample.iloc[i]['full_note']
+            note = sample.iloc[i]['data']
             few_shot_prompt += f'Example {i+1}:\n\nConversation:\n\n{dialogue}\n\nClinical note:\n\n{note}\n\n'
     else: 
-        few_shot_prompt = ''
+        few_shot_prompt = 'Your answer should consist in one or a few paragrpahs of text, not overstructured.'
 
     print("Loading model...")
     if openai_model == 'gpt-3.5-turbo':
@@ -308,11 +308,10 @@ def infer_openai(
     else:
         raise ValueError(f'OpenAI model {openai_model} not found.')
     
-    print("Building prompts...")
     instruction, usr_prompt = INSTRUCTIONS['direct']
     prompts = [(f"{instruction}\n\n{few_shot_prompt}\n\n{dialogue}", usr_prompt) 
-               for dialogue in data_df[input_key].tolist()]
-    
+               for dialogue in tqdm(data_df[input_key].tolist(), desc='Building prompts')]
+
     data_df['messages'] = [build_messages(*prompt) for prompt in prompts]
     
     sub_batches = partition(
