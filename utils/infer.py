@@ -95,6 +95,11 @@ Make sure to use all the information from the dialogue into the note, but do not
 Make sure to use all the information from the dialogue into the note, but do not add any new information.""",
         'Now, generate the corresponding clinical note: '
     ],
+    'generator-gpt': [
+        """Given the provided JSON patient information summary, generate the corresponding clinical note as written by a physician.
+        Make sure to use all the information from the dialogue into the note, but do not add any new information.""",
+        'Now, generate the corresponding clinical note: '
+    ],
     'direct': [
         """Given the provided patient-doctor conversation, generate the corresponding clinical note as written by the physician.
 Make sure to use all the information from the dialogue into the note, but do not add any new information.""",
