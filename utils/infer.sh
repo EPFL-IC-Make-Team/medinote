@@ -22,7 +22,7 @@ if [ "$1" == "meditron-7b-generator"  ] || [  "$1" == "all" ]; then
         --model_name meditron-7b-generator \
         --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-7b-generator/hf_checkpoint_new/ \
         --input_path $INPUT_PATH \
-        --output_path /pure-mlo-scratch/make_project/data/inference/meditron-7b-summarizer.jsonl \
+        --output_path /pure-mlo-scratch/make_project/data/inference/meditron-7b-generator.jsonl \
         --num_samples $NUM_SAMPLES \
         --mode generator  \
         --verbose $VERBOSE
@@ -83,7 +83,7 @@ if [ "$1" == "meditron-13b-direct"  ] || [  "$1" == "all" ]; then
         --model_name meditron-13b-direct \
         --model_path /pure-mlo-scratch/make_project/trial-runs/pubmed-13b-direct-trunc/hf_checkpoint_new/ \
         --input_path $INPUT_PATH \
-        --output_path /pure-mlo-scratch/make_project/data/inference/meditron-13b-direct.jsonl \
+        --output_path /pure-mlo-scratch/make_project/data/inference/meditron-13b-direct-trunc.jsonl \
         --num_samples $NUM_SAMPLES \
         --mode direct \
         --verbose $VERBOSE
