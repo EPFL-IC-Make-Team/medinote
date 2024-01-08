@@ -28,6 +28,7 @@ import matplotlib.pyplot as plt
 import sys
 import os
 import json
+from tqdm import tqdm
 
 import nltk
 from nltk.corpus import stopwords
@@ -56,28 +57,31 @@ os.makedirs(EVAL_DIR, exist_ok=True)
 
 # ----------------------- 0 - Prepare Evaluation inputs ----------------------- #
 
-def save_evaluation_input(eval_input_filename, inference_df, gold_data, pred_data):
+def save_evaluation_input(eval_input_filename, inference_df, pred_data, gold_data):
     eval_input = inference_df[['idx', gold_data, pred_data]].dropna()
-    if gold_data == 'summary':
-        for key in [gold_data,pred_data]:
-            eval_input[key] = eval_input[key].apply(lambda x: json.loads(x.replace('\n', ' ')))
     eval_input = eval_input.rename(columns={gold_data: 'gold', pred_data: 'pred'})
-    save_file(eval_input, os.path.join(EVAL_DIR, eval_input_filename))
+    if gold_data == 'summary':
+        for key in ['gold', 'pred']:
+            eval_input[key] = eval_input[key].apply(lambda x: json.loads((x.replace('\n', ' ').replace(
+            '""None""', '"None"').replace(
+                '""None', '').replace('''", },''','''" },'''))))
+    save_file(eval_input, eval_input_filename)
 
-def build_evaluation_inputs(combined_inferences_path, eval_input_dir_path ,models = KV_PAIRS.keys()):
+def build_evaluation_inputs(combined_inferences_path, eval_input_dir_path = EVAL_DIR ,models = KV_PAIRS.keys()):
     combined_inference_sample = load_file(combined_inferences_path)
     for model in models:
         if model not in KV_PAIRS.keys():
             raise ValueError(f"Model {model} is not valid. Please choose between {KV_PAIRS.keys()}")
-        save_evaluation_input(f'{eval_input_dir_path}/{model}_evaluation_input.jsonl', combined_inference_sample, KV_PAIRS[model][0], KV_PAIRS[model][1])
-      
-    
-    save_elo_inputs('elo_inputs.jsonl', combined_inference_sample)
+        save_evaluation_input(f'{eval_input_dir_path}/{model}_evaluation_input.jsonl', combined_inference_sample, GP_PAIRS[model]['pred'], GP_PAIRS[model]['gold'])
 
-def save_elo_inputs(output_filename, inference_sample, models_to_compare = KV_PAIRS.keys()- 'summarizer'):
+    models = [model for model in models if 'summarizer' not in model] 
+    save_elo_inputs('elo_inputs.jsonl', combined_inference_sample, models)
+
+def save_elo_inputs(output_filename, inference_sample, models_to_compare):
     #Selecting columns to keep
-    if 'summarizer' in models_to_compare:
-        raise ValueError("Summarizer cannot be used for Elo ranking.")
+    for model in models_to_compare:
+        if 'summarizer' in model:
+            raise ValueError("Summarizer cannot be used for Elo ranking.")
 
     if len(models_to_compare) >=2:
         outputs_notes = inference_sample[['idx', 'data'] +[KV_PAIRS[model][1] for model in models_to_compare]].dropna()
@@ -104,13 +108,14 @@ def save_elo_inputs(output_filename, inference_sample, models_to_compare = KV_PA
 
 def matching_bert_scrorer(pairs):
         '''BERT score for matching lists in the template'''
-        scores = {'bert': 
-            BERT_SCORER.compute(
-                predictions=[pair['pred'] for pair in pairs],
-                references=[pair['gold'] for pair in pairs],
-                lang='en')['f1']
-        }
-        return scores['bert'] 
+        '''BERT score for summary evaluation'''
+        bert_scores = BERT_SCORER.compute(
+                        predictions=[pair['pred'] for pair in pairs],
+                        references=[pair['gold'] for pair in pairs],
+                        model_type= 'distilbert-base-uncased',
+                        verbose = False)['f1']
+              
+        return bert_scores
 
 def match_list(gold_list, pred_list):
     '''
@@ -139,7 +144,6 @@ def match_list(gold_list, pred_list):
     max_items = max(len(gold_list), len(pred_list))
     matched_gold = gold_list.copy() + [{}] * (max_items - len(gold_list))
     matched_pred = [{}] * max_items
-
     gold_strings = [", ".join(str(value) for value in gold_item.values() if value is not NONE_FIELD) for gold_item in gold_list]
     pred_strings = [", ".join(str(value) for value in pred_item.values() if value is not NONE_FIELD) for pred_item in pred_list]
     pairs = [{'gold' : gold_string, 'pred' : pred_string} for gold_string in gold_strings for pred_string in pred_strings]
@@ -177,14 +181,44 @@ def flatten_dict(gold, pred, parent_key=''):
             if isinstance(gold_value, str):
                     flat.append((f"{parent_key}{gold_key}", (gold_value, pred[gold_key])))               
             if isinstance(gold_value, dict):
+                if not isinstance(pred[gold_key], dict):
+                    if pred[gold_key] == NONE_FIELD:
+                        print ("Case 6", gold_value)
+                        print(pred[gold_key])
+                        pred[gold_key] = {}
+                    else:
+                        print("Case 1", gold_value)
+                        print(pred[gold_key])
+                        pred[gold_key] = {pred[gold_key]: NONE_FIELD}
                 flat.extend(flatten_dict(gold_value, pred[gold_key], parent_key=f"{parent_key}{gold_key}/"))
             if isinstance(gold_value, list): #We have to match most similar lists
+                if not isinstance(pred[gold_key], list):
+                    if isinstance(pred[gold_key], dict):
+                        #print("Case 3", gold_value)
+                        #print(pred[gold_key])
+                        pred[gold_key] = [pred[gold_key]]
+                    elif pred[gold_key] == NONE_FIELD:
+                        print("Case 7", gold_value)
+                        print(pred[gold_key])
+                        pred[gold_key] = []
+                    else: 
+                        print("Case 4", gold_value)
+                        print(pred[gold_key])
+                        pred[gold_key] = [{pred[gold_key]: NONE_FIELD}]
                 matched_gold, matched_pred = match_list(gold_list = gold_value, 
                                                         pred_list = pred[gold_key])
                 for i, gold_list_val in enumerate(matched_gold):
                     if isinstance(gold_list_val, str):
                         flat.append((f"{parent_key}{gold_key}/{i}", (gold_list_val, matched_pred[i])))
                     if isinstance(gold_list_val, dict):
+                        if matched_pred[i] == NONE_FIELD:
+                            print ("Case 5", gold_list_val)
+                            print(matched_pred[i])
+                            matched_pred[i] = {}
+                        if not isinstance(matched_pred[i], dict):
+                            print("Case2", gold_list_val)
+                            print(matched_pred[i])
+                            matched_pred[i] = {matched_pred[i]: NONE_FIELD}
                         flat.extend(flatten_dict(gold_list_val, matched_pred[i], 
                                                  parent_key=f"{parent_key}{gold_key}/{i}/"))
         else: # No match for gold key
@@ -237,16 +271,16 @@ def get_counts_and_clean_dict(flattened_dict):
             counts['extra_keys_count'] += 1
         elif pred == NO_SUCH_KEY:
             key_mismatches['missing_keys'].append(key)
-        elif gold == NONE_FIELD:
-            if pred == NONE_FIELD:
+        elif gold == NONE_FIELD or gold == "":
+            if pred == NONE_FIELD or pred == "":
                 counts['common_none_count'] += 1
             else:
                 key_mismatches['gold_none_keys'].append(key)
         else:
-            if pred == NONE_FIELD:
+            if pred == NONE_FIELD or pred == "":
                 key_mismatches['pred_none_keys'].append(key)
             else:
-                clean_flat_dict[key] = (gold, pred)
+                clean_flat_dict[key] = (str(gold), str(pred))
     counts['gold_none_count'] = len(key_mismatches['gold_none_keys'])
     counts['pred_none_count'] = len(key_mismatches['pred_none_keys'])
     counts['missing_keys_count'] = len(key_mismatches['missing_keys'])
@@ -282,7 +316,8 @@ def summary_statistics(golds, preds, saving_manager, score_types=['rouge', 'bleu
         stats_df = pd.concat([golds, preds], axis=1)
 
         print(f"Flattening summary dictionnaries and matching keys...")
-        stats_df['flat_dicts'] = stats_df.apply(lambda row: flatten_dict(row['gold'], row['pred']), axis=1)
+        tqdm.pandas()
+        stats_df['flat_dicts'] = stats_df.progress_apply(lambda row: flatten_dict(row['gold'], row['pred']), axis=1)
         stats_df.drop(['gold', 'pred'], axis=1, inplace=True)
 
         saving_manager.flatten_and_match_dicts_update(stats_df)
@@ -294,8 +329,9 @@ def summary_statistics(golds, preds, saving_manager, score_types=['rouge', 'bleu
 
     if saving_manager.get_progress_dict()['clean dicts and counts'] != 'done':
         print(f"Computing counts and cleaning flattened dictionaries...")
+        tqdm.pandas()
         stats_df[['counts','cleaned_flat_dicts','key_mismatches']] = pd.DataFrame(
-                            stats_df['flat_dicts'].apply(get_counts_and_clean_dict).tolist(),
+                            stats_df['flat_dicts'].progress_apply(get_counts_and_clean_dict).tolist(),
                             columns=['counts', 'cleaned_flat_dicts', 'key_mismatches'])
         
         stats_df.drop(['flat_dicts'], axis=1, inplace=True)
@@ -322,9 +358,10 @@ def summary_statistics(golds, preds, saving_manager, score_types=['rouge', 'bleu
     if saving_manager.get_progress_dict()['pairs_idx'] != 'done':
         #Prepare df to pass to scorer (mainly flattening the list of list of keys and pairs)
         pairs_df = stats_df[['keys', 'pairs']].explode(['keys', 'pairs'])
+        pairs_df = pairs_df.dropna()
         pairs_df['pairs'] = pairs_df['pairs'].apply(lambda x: {'gold': x[0], 'pred': x[1]})
         pairs_df = pairs_df['pairs'].to_frame()
-        pairs_df['batch_idx'] = pairs_df.index
+        pairs_df['sample_idx'] = pairs_df.index
         pairs_df['idxs'] = range(pairs_df.shape[0])
         saving_manager.save_pairs_idx(pairs_df)
     else:
@@ -342,7 +379,7 @@ def summary_statistics(golds, preds, saving_manager, score_types=['rouge', 'bleu
 
     #Group scores by dictionaries as list of scores (mainly unlfattening the list of scores
         #as a list of list of scores)
-    grouped_scores = pairs_df.groupby(pairs_df['batch_idx']).agg(lambda x: list(x))
+    grouped_scores = pairs_df.groupby(pairs_df['sample_idx']).agg(lambda x: list(x))
 
     #Unpack grouped scores
     for metric in grouped_scores.columns:
@@ -351,7 +388,7 @@ def summary_statistics(golds, preds, saving_manager, score_types=['rouge', 'bleu
     saving_manager.save_summary_statistics(stats_df)  
     return stats_df
 
-def summary_evaluation(path, save_path = None ,score_types=['bleu', 'rouge', 'bert', 'gpt_score']): 
+def summary_evaluation(model_name,save_path = None ,score_types=['bleu', 'rouge', 'bert', 'gpt_score']): 
     '''
     1 - Patient summary evaluation
     Run evaluation on a dataframe with 'gold' and 'pred' patient summaries. 
@@ -374,6 +411,8 @@ def summary_evaluation(path, save_path = None ,score_types=['bleu', 'rouge', 'be
                     computed accros all patient summaries for this key 
                     e.g. "proprtion of pred summaries where this key is mssing"
     '''
+    path = f'evaluation/{model_name}_evaluation_input.jsonl'
+
     if score_types == 'all' or 'gpt_rank' in score_types:
         raise ValueError("GPT-4 ranking makes no sense for summary evaluation. \
                          Please choose in 'bleu', 'rouge', 'bert' and 'gpt_score'.")
@@ -449,7 +488,7 @@ def remove_stopwords(text):
 def remove_stopwords_from_pair(pair):
     return {'gold': remove_stopwords(pair['gold']), 'pred': remove_stopwords(pair['pred'])}
 
-def note_evaluation(model_name, path, save_path = None ,score_types='all'): 
+def note_evaluation(model_name, save_path = None ,score_types=['bleu', 'rouge', 'bert', 'gpt_score']): 
     '''
     2 - Clinical note evaluation
     Given 2 models’ answers (randomly mixed), ask GPT-4 to pick which one is the best and compute an ELO score. 
@@ -461,6 +500,7 @@ def note_evaluation(model_name, path, save_path = None ,score_types='all'):
         - score_types (str or list): list of scoring functions to be used. Default: 'all' (all scoring functions)
     '''
     # Load dataframe with inference results
+    path = f'evaluation/{model_name}_evaluation_input.jsonl'
 
     eval_saving = EvalSaving(NOTE_EVALUATION_STEPS, path, save_path)
 

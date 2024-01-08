@@ -4,7 +4,7 @@ INFER_DIR=/pure-mlo-scratch/make_project/data/inference/
 INPUT_PATH=/pure-mlo-scratch/make_project/data/raw/summaries_full_test.jsonl
 OUTPUT_PATH=/pure-mlo-scratch/make_project/data/evaluation/generation.jsonl
 NUM_SAMPLES=1000
-VERBOSE=0
+VERBOSE=1
 
 if [ "$1" == "meditron-7b-summarizer" ] || [ "$1" == "all" ]; then
     python3 utils/infer.py \

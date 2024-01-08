@@ -26,7 +26,11 @@ BOS_TOKEN = '<|im_start|>'
 EOS_TOKEN = '<|im_end|>'
 
 KV_PAIRS = {
-    'summarizer': {
+    'meditron-7b-summarizer': {
+        'input': 'conversation',
+        'output': 'pred_summary',
+    },
+    'meditron-13b-summarizer': {
         'input': 'conversation',
         'output': 'pred_summary',
     },
@@ -47,6 +51,32 @@ KV_PAIRS = {
         'output': 'pred_direct-gpt',
     }
 }
+
+gold_note_column = 'data'
+gold_summary_column = 'summary'
+
+GP_PAIRS = {
+    'meditron-7b-summarizer': {
+        'gold': gold_summary_column
+    },
+    'meditron-13b-summarizer': {
+        'gold': gold_summary_column
+    },
+    'generator': {
+        'gold': gold_note_column
+    },
+    'generator-gpt': {
+        'gold': gold_note_column
+    },
+    'direct': {
+        'gold': gold_note_column
+    },
+    'direct-gpt': {
+        'gold': gold_note_column,
+    }}
+
+for mode in KV_PAIRS.keys():
+    GP_PAIRS[mode]['pred'] = KV_PAIRS[mode]['output']
 
 INSTRUCTIONS = {
     'summarizer': [
@@ -106,10 +136,10 @@ PARAMETERS = {
 
 # ----------------------- Inference utilities ----------------------- #
 
-def combine(input_path, output_path):
-    '''
+'''def combine(input_path, output_path):
+    
     Combine the inferred data into a single file.
-    '''
+    
     paths = [os.path.join(input_path, f) for f in os.listdir(input_path) if f.endswith('.jsonl')]
     files = {path.split('/')[-1].split('.')[0]: load_file(path) for path in paths}
     for source, df in files.items():
@@ -118,29 +148,28 @@ def combine(input_path, output_path):
         files[source] = df
     combined_df = pd.concat(files.values(), ignore_index=True)
     save_file(combined_df, output_path, mode='w')
-    return combined_df
+    return combined_df'''
 
-def combine2(input_path, output_path):
+def combine(input_path, output_path):
     '''
     Combine the inferred data into a single file.
     '''
     paths = [os.path.join(input_path, f) for f in os.listdir(input_path) if f.endswith('.jsonl')]
     files = {path.split('/')[-1].split('.')[0]: load_file(path) for path in paths}
-
-    #for _,df in files.items():
-    #    df = df.sort_values(by=['idx'])
-
-    commom_columns = list(set.intersection(*[set(df.columns) for df in files.values()]))
-
-    combined_df = files.items()[0][1]
-
-    for _, df in files.items()[1:]:
-        combined_df = pd.merge(combined_df, df, on=commom_columns, how='inner')
+    dfs = list(files.values())
+    commom_columns = list(set.intersection(*[set(df.columns) for df in dfs]))
     
-    if len(combined_df) < len(files.items()[0][1]):
+    combined_df = dfs[0].dropna()
+    len_ = combined_df.shape[0]
+
+    for name,df in list(files.items())[1:]:
+        combined_df = pd.merge(combined_df, df.dropna(), on=commom_columns, how='inner', suffixes=('',f'_{name}'))
+    
+    if len(combined_df) < len_:
         raise ValueError(f'Combined dataframe has less rows than the first dataframe.')
 
     save_file(combined_df, output_path, mode='w')
+
     return combined_df
     
 def todo_list(data_df, gen_df, output_key, num_samples):

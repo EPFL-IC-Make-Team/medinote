@@ -19,6 +19,7 @@ from evaluate import load
 import sys
 import os
 import time
+from concurrent.futures import ProcessPoolExecutor
 
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
@@ -85,8 +86,8 @@ class Scorer():
             pairs_df['bleu'] = self.BLEU_scorer(pairs_df['pairs_prep'])['bleu']
 
         if 'rouge' in self.score_types:
-            rouges = self.ROUGE_scorer(pairs_df['pairs_prep'])
-            for metric in rouges.keys(): #different rouge scores
+            rouges = self.ROUGE_scorer(pairs_df[['idxs','pairs_prep']])
+            for metric in ROUGE_SUB_SCORES: #different rouge scores
                 pairs_df[metric] = rouges[metric]
         if 'bert' in self.score_types:
             pairs_df['bert'] = self.BERT_scorer(pairs_df[['idxs','pairs']])
@@ -96,6 +97,8 @@ class Scorer():
         if 'gpt_score' in self.score_types:
             pairs_df['gpt_score'] = self.GPT_scorer(pairs_df[['idxs','pairs']])
 
+        if remove_stopwords and ('bleu' in self.score_types or 'rouge' in self.score_types):
+            pairs_df.drop(columns=['pairs_prep'], inplace=True)
         self.saving_manager.save_all_scores(pairs_df)
 
         return pairs_df
@@ -114,7 +117,8 @@ class Scorer():
             else :
                 pairs_to_compute = pairs
 
-            bleu_scores = {'bleu': [BLEU_SCORER.compute(predictions=[pair['pred']],
+            bleu_scores = {'bleu': [BLEU_SCORER.compute(
+                predictions=[pair['pred']],
                 references=[pair['gold']])['bleu'] 
                 for pair in tqdm(pairs_to_compute, total = len(pairs_to_compute) ,desc="Computing BLEU scores")]}
             
@@ -123,7 +127,8 @@ class Scorer():
             return bleu_scores
     
     def ROUGE_scorer(self, pairs):
-        ''' ROUGE score for summary evaluation (recall-oriented)'''
+        ''' ROUGE score for summary evaluation (recall-oriented)'''''
+
         status = self.saving_manager.get_progress_dict()['rouge']
         if status == 'done':
                 print("ROUGE scores already computed.")
@@ -132,29 +137,37 @@ class Scorer():
         else :
             if status == 'in progress':
                 print("ROUGE score computation already in progress, resuming")
-                pairs_to_compute = self.saving_manager.get_one_score_to_compute('rouge', pairs)
+                computed = self.saving_manager.load_one_score('rouge')
+                pairs_to_compute = pairs[~pairs['idxs'].isin(computed['idxs'].tolist())]
             else :
                 pairs_to_compute = pairs
 
-            rouges = [ROUGE_SCORER.compute(
-                predictions=[pair['pred']], references=[pair['gold']])
-                for pair in tqdm(pairs_to_compute, total = len(pairs_to_compute) ,desc="Computing ROUGE scores")]
+            batch_size = 100
+            batches = [pairs_to_compute.iloc[i:i + batch_size].copy() for i in range(0, len(pairs_to_compute), batch_size)]
+            res = pd.DataFrame()
+            for batch in tqdm(batches, total = len(batches) ,desc="Computing Rouge scores"):
+                rouges = [ROUGE_SCORER.compute(
+                    predictions=[pair['pred']], references=[pair['gold']])
+                    for pair in batch['pairs_prep']]
             
-            metrics = rouges[0].keys()
-            scores = {metric: [rouge[metric] for rouge in rouges] for metric in metrics} 
-            
-            self.saving_manager.save_one_score(pd.DataFrame(scores),'rouge', done = True)
+                for metric in ROUGE_SUB_SCORES:
+                    batch[metric] = [rouge[metric] for rouge in rouges]
 
-            return scores
+                self.saving_manager.save_one_score(batch[['idxs']+ ROUGE_SUB_SCORES],'rouge', done = False)
+                
+                res = pd.concat([res, batch[['idxs'] + ROUGE_SUB_SCORES]], ignore_index=True)
+
+            self.saving_manager.save_one_score(res,'rouge', done = True)
+
+            return res[ROUGE_SUB_SCORES]
 
     def BERT_scorer(self, pairs):
         '''BERT score for summary evaluation'''
         print("Computing BERTscores...")
-        start_time = time.time()
         status = self.saving_manager.get_progress_dict()['bert']
         if status == 'done':
-                print("BERTscores already computed.")
-                return self.saving_manager.load_one_score('bert')['bert']
+            print("BERTscores already computed.")
+            return self.saving_manager.load_one_score('bert')['bert']
         else :
             if status == 'in progress':
                 print("BERTscores computation already in progress, resuming")
@@ -167,7 +180,8 @@ class Scorer():
             #display(pairs_to_compute)
 
             #batches of 100 pairs
-            batches = [pairs_to_compute.iloc[i:i + 10].copy() for i in range(0, len(pairs_to_compute), 10)]
+            batch_size = 100    
+            batches = [pairs_to_compute.iloc[i:i + batch_size].copy() for i in range(0, len(pairs_to_compute), batch_size)]
             res = pd.DataFrame()
             for batch in tqdm(batches, total = len(batches) ,desc="Computing BERT scores"):
                 bert_scores = {'bert': 
@@ -179,12 +193,9 @@ class Scorer():
                         #lang='en')['f1']
                     }
                 #print(bert_scores['bert'])
-                #display(batch)
                 batch['bert'] = bert_scores['bert']
-                #display(batch)
                 self.saving_manager.save_one_score(batch[['idxs', 'bert']],'bert', done = False)
                 res = pd.concat([res, batch[['idxs', 'bert']]], ignore_index=True)
-            
 
             self.saving_manager.save_one_score(res, 'bert', done = True)
 
@@ -197,9 +208,7 @@ class Scorer():
                     #lang='en')['f1']
                 }'''
             
-            end_time = time.time()
-            print(f"BERTscores computed. Time taken: {(end_time - start_time)/60} minutes.")
-            return bert_scores
+            return res['bert']
     
     def ranker_formatting(self, answer):
         """
@@ -380,8 +389,8 @@ class Scorer():
                    model_name='gpt-4-1106-preview',
                    chat=chat_gpt_4_turbo,
                    temperature=0.0,
-                   max_tokens = 5000,
-                   one_call_batch_size=5):
+                   max_tokens = 500000,
+                   one_call_batch_size=15):
         ''' 
         Given a model’s answer and GPT-4' answer (silver label), 
         ask GPT-4 with CoT to compute the similarity between the two answers on a scale of 1 to 10. 
@@ -427,7 +436,7 @@ class Scorer():
             switches = [np.random.choice([0, 1]) for _ in range(len(golds))]
             optionsA = [gold if switch == 0 else pred for gold, pred, switch in zip(golds, preds, switches)]
             optionsB = [gold if switch == 1 else pred for gold, pred, switch in zip(golds, preds, switches)]
-            sys_prompt = f"For each pair of notes (pair i, NoteA, NoteB) you are given, compare them and rate how similar their content is of 1 to 10. Pay attention to details and be strict with small but meaningfull content differences"
+            sys_prompt = f"For each pair of notes (pair i, NoteA, NoteB) you are given, rate how similar they are from 1 to 10. Focus on content and pay attention to details. Be very strict with any content differences"
             
             if self.cot:
                 sys_prompt += "Explain in one sentence your reasoning in comparing the two notes, then select your final answer.\n \
