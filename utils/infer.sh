@@ -21,7 +21,7 @@ if [ "$1" == "meditron-7b-generator"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
         --model_name meditron-7b-generator \
         --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-7b-generator/hf_checkpoint_new/ \
-        --input_path $INPUT_PATH \
+        --input_path /pure-mlo-scratch/make_project/data/inference/meditron-7b-summarizer.jsonl \
         --output_path /pure-mlo-scratch/make_project/data/inference/meditron-7b-generator.jsonl \
         --num_samples $NUM_SAMPLES \
         --mode generator  \
