@@ -32,29 +32,42 @@ from utils.chat import *
 BOS_TOKEN, EOS_TOKEN = '<|im_start|>', '<|im_end|>'
 
 KEYS = {
-    'summarizer': {
+    'meditron-7b-summarizer': {
         'input': 'conversation',
         'output': 'pred_summary',
+        'combined_output' : 'pred_summary_7b',
         'gold': 'summary'
     },
+
+    'meditron-13b-summarizer': {
+        'input': 'conversation',
+        'output': 'pred_summary',
+        'combined_output' : 'pred_summary_13b',
+        'gold': 'summary'
+    },
+
     'generator': {
         'input': 'pred_summary',
         'output': 'pred_note',
+        'combined_output' : 'pred_note',
         'gold': 'data'
     },
     'generator-gpt': {
         'input': 'summary',
         'output': 'pred_note-gpt',
+        'combine_outpur' : 'pred_note-gpt',
         'gold': 'data'
     },
     'direct': {
         'input': 'conversation',
         'output': 'pred_direct',
+        'combined_output' : 'pred_direct',
         'gold': 'data'
     },
     'direct-gpt': {
         'input': 'conversation',
         'output': 'pred_direct-gpt',
+        'combined_output' : 'pred_direct-gpt',
         'gold': 'data'
     }
 }
@@ -126,15 +139,17 @@ def combine(input_path, output_path):
     Combine the inferred data into a single file.
     '''
     paths = [os.path.join(input_path, f) for f in os.listdir(input_path) if f.endswith('.jsonl')]
-    files = {path.split('/')[-1].split('.')[0]: load_file(path) for path in paths}
-    dfs = list(files.values())
-    commom_columns = list(set.intersection(*[set(df.columns) for df in dfs]))
+    files = list({path.split('/')[-1].split('.')[0]: load_file(path) for path in paths}.items())
+ 
+    commom_columns = list(set.intersection(*[set(file[1].columns) for file in files]))
     
-    combined_df = dfs[0].dropna()
+    combined_df = files[0][1].dropna()
     len_ = combined_df.shape[0]
+    combined_df = combined_df.rename(columns={KEYS[files[0][0]]['output']: KEYS[files[0][0]]['combined_output']})
 
-    for name,df in list(files.items())[1:]:
-        combined_df = pd.merge(combined_df, df.dropna(), on=commom_columns, how='inner', suffixes=('',f'_{name}'))
+    for name,df in files[1:]:
+        df = df.rename(columns={KEYS[name]['output']: KEYS[name]['combined_output']})
+        combined_df = pd.merge(combined_df, df.dropna(), on=commom_columns, how='inner')
     
     if len(combined_df) < len_:
         raise ValueError(f'Combined dataframe has less rows than the first dataframe.')

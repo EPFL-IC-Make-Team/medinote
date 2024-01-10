@@ -67,12 +67,12 @@ def save_evaluation_input(eval_input_filename, inference_df, pred_data, gold_dat
                 '""None', '').replace('''", },''','''" },'''))))
     save_file(eval_input, eval_input_filename)
 
-def build_evaluation_inputs(combined_inferences_path, eval_input_dir_path = EVAL_DIR ,models = KV_PAIRS.keys()):
+def build_evaluation_inputs(combined_inferences_path, eval_input_dir_path = EVAL_DIR ,models = KEYS.keys()):
     combined_inference_sample = load_file(combined_inferences_path)
     for model in models:
-        if model not in KV_PAIRS.keys():
-            raise ValueError(f"Model {model} is not valid. Please choose between {KV_PAIRS.keys()}")
-        save_evaluation_input(f'{eval_input_dir_path}/{model}_evaluation_input.jsonl', combined_inference_sample, GP_PAIRS[model]['pred'], GP_PAIRS[model]['gold'])
+        if model not in KEYS.keys():
+            raise ValueError(f"Model {model} is not valid. Please choose between {KEYS.keys()}")
+        save_evaluation_input(f'{eval_input_dir_path}/{model}_evaluation_input.jsonl', combined_inference_sample, KEYS[model]['combined_output'], KEYS[model]['gold'])
 
     models = [model for model in models if 'summarizer' not in model] 
     save_elo_inputs('elo_inputs.jsonl', combined_inference_sample, models)
@@ -84,10 +84,10 @@ def save_elo_inputs(output_filename, inference_sample, models_to_compare):
             raise ValueError("Summarizer cannot be used for Elo ranking.")
 
     if len(models_to_compare) >=2:
-        outputs_notes = inference_sample[['idx', 'data'] +[KV_PAIRS[model][1] for model in models_to_compare]].dropna()
+        outputs_notes = inference_sample[['idx', 'data'] +[KEYS[model]['output'] for model in models_to_compare]].dropna()
 
         #Renaming columns
-        outputs_notes = outputs_notes.rename(columns={KV_PAIRS[model][1]: model for model in models_to_compare})
+        outputs_notes = outputs_notes.rename(columns={KEYS[model]['output']: model for model in models_to_compare})
         #Possible pair combinations:
         model_pairs = list(combinations(models_to_compare, 2))
 
@@ -455,6 +455,8 @@ def summary_evaluation(model_name,save_path = None ,score_types=['bleu', 'rouge'
             left_on='keys',
             right_index=True).fillna(0)
         
+        score_by_keys = score_by_keys.reset_index()
+
         eval_saving.save_eval_by_key(score_by_keys)
     else:
         score_by_keys = eval_saving.load_eval_by_key()
