@@ -57,7 +57,6 @@ os.makedirs(EVAL_DIR, exist_ok=True)
 
 # ----------------------- 0 - Prepare Evaluation inputs ----------------------- #
     
-
 def save_evaluation_input(eval_input_filename, inference_df, pred_data, gold_data):
     eval_input = inference_df[['idx', gold_data, pred_data]].dropna()
     eval_input = eval_input.rename(columns={gold_data: 'gold', pred_data: 'pred'})
@@ -159,9 +158,6 @@ def match_list(gold_list, pred_list):
         scores[best_match_index[0], :] = 0 # remove scores for that match in gold items
         scores[:, best_match_index[1]] = 0 # remove scores for that match in pred items
 
-    #print(f"new_matched_gold: {matched_gold}")
-    #print(f"new_matched_pred: {matched_pred}")
-
     return matched_gold, matched_pred
 
 def flatten_dict(gold, pred, parent_key=''):
@@ -184,27 +180,18 @@ def flatten_dict(gold, pred, parent_key=''):
             if isinstance(gold_value, dict):
                 if not isinstance(pred[gold_key], dict):
                     if pred[gold_key] == NONE_FIELD:
-                        print ("Case 6", gold_value)
-                        print(pred[gold_key])
                         pred[gold_key] = {}
+                    
                     else:
-                        print("Case 1", gold_value)
-                        print(pred[gold_key])
                         pred[gold_key] = {pred[gold_key]: NONE_FIELD}
                 flat.extend(flatten_dict(gold_value, pred[gold_key], parent_key=f"{parent_key}{gold_key}/"))
             if isinstance(gold_value, list): #We have to match most similar lists
                 if not isinstance(pred[gold_key], list):
                     if isinstance(pred[gold_key], dict):
-                        #print("Case 3", gold_value)
-                        #print(pred[gold_key])
                         pred[gold_key] = [pred[gold_key]]
                     elif pred[gold_key] == NONE_FIELD:
-                        print("Case 7", gold_value)
-                        print(pred[gold_key])
                         pred[gold_key] = []
                     else: 
-                        print("Case 4", gold_value)
-                        print(pred[gold_key])
                         pred[gold_key] = [{pred[gold_key]: NONE_FIELD}]
                 matched_gold, matched_pred = match_list(gold_list = gold_value, 
                                                         pred_list = pred[gold_key])
@@ -213,12 +200,8 @@ def flatten_dict(gold, pred, parent_key=''):
                         flat.append((f"{parent_key}{gold_key}/{i}", (gold_list_val, matched_pred[i])))
                     if isinstance(gold_list_val, dict):
                         if matched_pred[i] == NONE_FIELD:
-                            print ("Case 5", gold_list_val)
-                            print(matched_pred[i])
                             matched_pred[i] = {}
                         if not isinstance(matched_pred[i], dict):
-                            print("Case2", gold_list_val)
-                            print(matched_pred[i])
                             matched_pred[i] = {matched_pred[i]: NONE_FIELD}
                         flat.extend(flatten_dict(gold_list_val, matched_pred[i], 
                                                  parent_key=f"{parent_key}{gold_key}/{i}/"))
