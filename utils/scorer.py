@@ -139,13 +139,15 @@ class Scorer():
                 print("ROUGE score computation already in progress, resuming")
                 computed = self.saving_manager.load_one_score('rouge')
                 pairs_to_compute = pairs[~pairs['idxs'].isin(computed['idxs'].tolist())]
+                res = pairs[pairs['idxs'].isin(computed['idxs'].tolist())]
+                res[ROUGE_SUB_SCORES] = computed[ROUGE_SUB_SCORES]
             else :
                 pairs_to_compute = pairs
+                res = pd.DataFrame()
 
             batch_size = 100
             batches = [pairs_to_compute.iloc[i:i + batch_size].copy() for i in range(0, len(pairs_to_compute), batch_size)]
-            res = pd.DataFrame()
-            for batch in tqdm(batches, total = len(batches) ,desc="Computing Rouge scores"):
+            for i, batch in tqdm(enumerate(batches), total = len(batches) ,desc="Computing Rouge scores"):
                 rouges = [ROUGE_SCORER.compute(
                     predictions=[pair['pred']], references=[pair['gold']])
                     for pair in batch['pairs_prep']]
@@ -153,7 +155,7 @@ class Scorer():
                 for metric in ROUGE_SUB_SCORES:
                     batch[metric] = [rouge[metric] for rouge in rouges]
 
-                self.saving_manager.save_one_score(batch[['idxs']+ ROUGE_SUB_SCORES],'rouge', done = False)
+                self.saving_manager.save_one_score(batch[['idxs']+ ROUGE_SUB_SCORES],'rouge', done = (i == (len(batches) - 1)))
                 
                 res = pd.concat([res, batch[['idxs'] + ROUGE_SUB_SCORES]], ignore_index=True)
 
@@ -173,40 +175,31 @@ class Scorer():
                 print("BERTscores computation already in progress, resuming")
                 computed = self.saving_manager.load_one_score('bert')
                 pairs_to_compute = pairs[~pairs['idxs'].isin(computed['idxs'].tolist())]
+                res = pairs[pairs['idxs'].isin(computed['idxs'].tolist())]
+                res['bert'] = computed['bert']
 
             else :
                 pairs_to_compute = pairs
+                res = pd.DataFrame()
             
             #display(pairs_to_compute)
 
             #batches of 100 pairs
             batch_size = 100    
             batches = [pairs_to_compute.iloc[i:i + batch_size].copy() for i in range(0, len(pairs_to_compute), batch_size)]
-            res = pd.DataFrame()
-            for batch in tqdm(batches, total = len(batches) ,desc="Computing BERT scores"):
+           
+            for i, batch in tqdm(enumerate(batches), total = len(batches) ,desc="Computing BERT scores"):
                 bert_scores = {'bert': 
                     BERT_SCORER.compute(
                         predictions=[pair['pred'] for pair in batch['pairs']],
                         references=[pair['gold'] for pair in batch['pairs']],
                         model_type= 'distilbert-base-uncased',
                         verbose = False)['f1']
-                        #lang='en')['f1']
                     }
-                #print(bert_scores['bert'])
+                
                 batch['bert'] = bert_scores['bert']
-                self.saving_manager.save_one_score(batch[['idxs', 'bert']],'bert', done = False)
+                self.saving_manager.save_one_score(batch[['idxs', 'bert']], 'bert', done = (i == (len(batches) - 1)))
                 res = pd.concat([res, batch[['idxs', 'bert']]], ignore_index=True)
-
-            self.saving_manager.save_one_score(res, 'bert', done = True)
-
-            '''bert_scores = {'bert': 
-                BERT_SCORER.compute(
-                    predictions=[pair['pred'] for pair in pairs_to_compute],
-                    references=[pair['gold'] for pair in pairs_to_compute],
-                    model_type= 'distilbert-base-uncased',
-                    verbose = True)['f1']
-                    #lang='en')['f1']
-                }'''
             
             return res['bert']
     
@@ -480,7 +473,7 @@ class Scorer():
             
             res = pd.concat([res, sub_batch_res], ignore_index=True)
 
-            self.saving_manager.save_one_score(sub_batch_res, 'gpt_score', done = False)
+            self.saving_manager.save_one_score(sub_batch_res, 'gpt_score', done = (i == len(sub_batches) - 1))
             delete_pickle_file("safety_save.pkl")
             
             end_time = time.time()
