@@ -20,7 +20,7 @@ import numpy as np
 import vllm
 import json as json
 from tqdm import tqdm
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 
@@ -110,6 +110,16 @@ PARAMETERS = {
 }
 
 # ----------------------- Inference utilities ----------------------- #
+
+class PandasDataset(Dataset):
+    def __init__(self, dataframe):
+        self.dataframe = dataframe
+
+    def __len__(self):
+        return len(self.dataframe)
+    
+    def __getitem__(self, index):
+        return self.dataframe.iloc[index]
 
 def combine(input_path, output_path):
     '''
@@ -451,7 +461,16 @@ def infer(
     idx_todo = todo_list(data_df, gen_df, output_key, num_samples)
     gen_df = gen_df[gen_df['idx'].isin(idx_todo)]
     batch_size = 1 if mode == 'summarizer' else 2
-    data_loader = DataLoader(gen_df, batch_size=batch_size, shuffle=False)
+
+    data = json.loads(gen_df.to_json(orient='records'))
+    data_loader = DataLoader(data, batch_size=batch_size, shuffle=False)
+
+    if verbose:
+        for batch in data_loader:
+            for idx, prompt in zip(batch['idx'], batch[input_key]):
+                print(f'\n\n### PROMPT:\n\n{prompt}')
+                print(f'\n\n### ANSWER:\n\n{gen_df[gen_df["idx"] == idx][output_key].iloc[0]}')
+            break
 
     print(f"Initializing vLLM client...")
     kwargs = {
@@ -477,7 +496,7 @@ def infer(
                 print(f'\n\n### ANSWER:\n\n{answer}')
 
         for idx, answer in zip(batch['idx'], answers):
-            gen_df.loc[data_df['idx'] == idx, output_key] = answer
+            gen_df.loc[gen_df['idx'] == idx, output_key] = answer
         save_file(gen_df, output_path, mode='w')
             
 
@@ -522,6 +541,10 @@ if __name__ == "__main__":
                         type=int,
                         default=1,
                         help='Whether to print prompts and answers')
+    parser.add_argument('--combine',
+                        action='store_true',
+                        default=False,
+                        help='Whether to combine the generated notes into a single file.')
     args = parser.parse_args()
 
     if args.combine: 

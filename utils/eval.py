@@ -613,10 +613,6 @@ if __name__ == "__main__":
                         default='all', 
                         help='List of scoring functions to be used (choices: bleu, rouge, bert, gpt_rank, gpt_score). \
                             \nDefault: all (all scoring functions). Format example: "bleu, rouge, bert"')
-    parser.add_argument('--combine',
-                        action='store_true',
-                        default=False,
-                        help='Whether to combine the generated notes into a single file.')
     args = parser.parse_args()
     score_types = args.score_types.split(', ')
 
