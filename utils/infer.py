@@ -17,7 +17,7 @@ import sys
 import os
 import time
 import numpy as np
-import vllm
+#import vllm
 import json as json
 from tqdm import tqdm
 from torch.utils.data import DataLoader, Dataset
