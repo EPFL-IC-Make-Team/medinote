@@ -30,6 +30,7 @@ from utils.chat import *
 # ----------------------- Constants ----------------------- #
 
 BOS_TOKEN, EOS_TOKEN = '<|im_start|>', '<|im_end|>'
+TODO_VAL = -1
 
 KEYS = {
     'meditron-7b-summarizer': {
@@ -108,7 +109,7 @@ GREEDY_PARAMETERS = {
     'presence_penalty': 0.0,
     'frequency_penalty': 1.0,
     'top_k': -1,
-    'top_p': -1,
+    'top_p': 1.0,
     'temperature': 0.0,
     'stop': EOS_TOKEN,
     'use_beam_search': False,
@@ -133,6 +134,7 @@ class PandasDataset(Dataset):
     
     def __getitem__(self, index):
         return self.dataframe.iloc[index]
+        
 
 def combine(input_path, output_path):
     '''
@@ -158,21 +160,27 @@ def combine(input_path, output_path):
 
     return combined_df
 
-def todo_list(data_df, gen_df, output_key, num_samples):
+def todo_list(data_df, gen_df, input_key, output_key, num_samples=None):
     '''
-    Returns the list of samples to generate. 
+    Returns the list of samples to generate.
+
+    :param data_df: pd.DataFrame, the input data
+    :param gen_df: pd.DataFrame, the generated data
+    :param input_key: str, remove samples for which the input key is None
+    :param output_key: str, remove samples for which the output key has already been generated in gen_df
+    :param num_samples: int, keep only the first num_samples samples (default: None --> all)
+    :return: list, the list of indices to generate
     '''
-    idx_todo = data_df['idx'].tolist()
+    if input_key not in data_df.columns:
+        raise ValueError(f'Input key {input_key} not found in input file.')
+    valid_data = data_df[data_df[input_key].notnull()]
+    idx_todo = valid_data['idx'].tolist()
     if num_samples and len(idx_todo) > num_samples:
         idx_todo = idx_todo[:num_samples]
     idx_done = gen_df[gen_df[output_key].notnull()]['idx'].tolist()
     idx_todo = [i for i in idx_todo if i not in idx_done]
     if len(idx_todo) == 0:
         raise ValueError(f'All samples already generated.')
-    if 'input_key' in gen_df.columns:
-        idx_todo = [i for i in idx_todo if gen_df[gen_df['idx'] == i]['input_key'].iloc[0] is not None]
-    if len(idx_todo) == 0:
-        raise ValueError(f'Samples left to generate but their input is None.')
     return idx_todo
     
 def load_template(template_path):
@@ -216,7 +224,7 @@ def infer_vllm(client, mode, prompt):
     :param mode: str, the mode to use for inference
     :param prompt: str, the prompt to generate from
     """
-    sampling_params = vllm.GenerationParameters(**PARAMETERS[mode])
+    sampling_params = vllm.SamplingParams(**PARAMETERS[mode])
     response = client.generate(prompt, sampling_params=sampling_params)
     if len(response) > 0:
         return [r.outputs[0].text for r in response]
@@ -284,7 +292,7 @@ def infer_openai(input_path,
         gen_df = pd.DataFrame(columns = data_df.columns)
     if output_key not in gen_df.columns:
         gen_df[output_key] = None
-    idx_todo = todo_list(data_df, gen_df, output_key, num_samples)
+    idx_todo = todo_list(data_df, gen_df, output_key, num_samples=num_samples)
     data_df = data_df[data_df['idx'].isin(idx_todo)]
 
     few_shot_prompt = load_few_shot(train_path, shots=shots)
@@ -387,8 +395,7 @@ def infer_summary(dialogue,
                   client, 
                   template, 
                   instructions, 
-                  max_tries=3, 
-                  verbose=False): 
+                  max_tries=3): 
     '''
     Generates a patient summary from a patient-doctor conversation.
     If the generated summary is incomplete, query the model again with the missing fields.
@@ -457,35 +464,29 @@ def infer(
     input_key = KEYS[mode]['input']
     output_key = KEYS[mode]['output']
 
-    print(f"\nLoading data file from {input_path}...")
     data_df = load_file(input_path)
+    print(f"\nLoaded data file with {data_df.shape[0]} samples and columns {list(data_df.columns)}...")
     if 'idx' not in data_df.columns:
         data_df['idx'] = data_df.index
     data_df = data_df.reset_index(drop=True)
     template = None if mode != 'summarizer' else load_template(template_path)
 
-    print(f"Loading output file from {output_path}...")
     if os.path.exists(output_path):
         gen_df = load_file(output_path)
+        print(f"Loading output file with {gen_df.shape[0]} samples...")
     else:
-        gen_df = data_df.copy()
-    if input_key not in gen_df.columns:
-        raise ValueError(f'Input key {input_key} not found in output file.')
-    if output_key not in gen_df.columns:
-        gen_df[output_key] = None
-    idx_todo = todo_list(data_df, gen_df, output_key, num_samples)
-    gen_df = gen_df[gen_df['idx'].isin(idx_todo)]
+        print(f"Creating output file at {output_path} with columns {list(data_df.columns)}...")
+        gen_df = pd.DataFrame(columns = data_df.columns)
+        gen_df[output_key] = TODO_VAL
+
+    idx_todo = todo_list(data_df, gen_df, input_key, output_key, num_samples)
+    print(f"{len(idx_todo)} samples to generate.")
+    
+    data_df = data_df[data_df['idx'].isin(idx_todo)]
     batch_size = 1 if mode == 'summarizer' else 2
-
-    data = json.loads(gen_df.to_json(orient='records'))
-    data_loader = DataLoader(data, batch_size=batch_size, shuffle=False)
-
-    if verbose:
-        for batch in data_loader:
-            for idx, prompt in zip(batch['idx'], batch[input_key]):
-                print(f'\n\n### PROMPT:\n\n{prompt}')
-                print(f'\n\n### ANSWER:\n\n{gen_df[gen_df["idx"] == idx][output_key].iloc[0]}')
-            break
+    inference_data = json.loads(data_df.to_json(orient='records'))
+    data_loader = DataLoader(inference_data, batch_size=batch_size, shuffle=False)
+    print(f"Created data loader: {len(data_loader)} batches to generate with batch size {batch_size}.")
 
     print(f"Initializing vLLM client...")
     kwargs = {
@@ -510,8 +511,9 @@ def infer(
                 print(f'\n\n### PROMPT:\n\n{prompt}')
                 print(f'\n\n### ANSWER:\n\n{answer}')
 
-        for idx, answer in zip(batch['idx'], answers):
-            gen_df.loc[gen_df['idx'] == idx, output_key] = answer
+        new_batch = pd.DataFrame(batch)
+        new_batch[output_key] = answers
+        gen_df = pd.concat([gen_df, new_batch], ignore_index = True)
         save_file(gen_df, output_path, mode='w')
             
 
