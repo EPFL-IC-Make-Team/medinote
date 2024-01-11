@@ -17,7 +17,7 @@ import sys
 import os
 import time
 import numpy as np
-#import vllm
+import vllm
 import json as json
 from tqdm import tqdm
 from torch.utils.data import DataLoader, Dataset
@@ -56,7 +56,7 @@ KEYS = {
     'generator-gpt': {
         'input': 'summary',
         'output': 'pred_note-gpt',
-        'combine_outpur' : 'pred_note-gpt',
+        'combine_output' : 'pred_note-gpt',
         'gold': 'data'
     },
     'direct': {
@@ -461,8 +461,10 @@ def infer(
 
     print(f"\n\n# ----- INFERENCE: mode = {mode}, model = {model_name} ----- #\n\n")
     instructions = INSTRUCTIONS[mode]
-    input_key = KEYS[mode]['input']
-    output_key = KEYS[mode]['output']
+    if mode == 'summarizer':
+        input_key, output_key = KEYS[model_name]['input'], KEYS[model_name]['output']
+    else:
+        input_key, output_key = KEYS[mode]['input'], KEYS[mode]['output']
 
     data_df = load_file(input_path)
     print(f"\nLoaded data file with {data_df.shape[0]} samples and columns {list(data_df.columns)}...")
