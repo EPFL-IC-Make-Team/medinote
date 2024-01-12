@@ -33,14 +33,7 @@ BOS_TOKEN, EOS_TOKEN = '<|im_start|>', '<|im_end|>'
 TODO_VAL = -1
 
 KEYS = {
-    'meditron-7b-summarizer': {
-        'input': 'conversation',
-        'output': 'pred_summary',
-        'combined_output' : 'pred_summary_7b',
-        'gold': 'summary'
-    },
-
-    'meditron-13b-summarizer': {
+    'summarizer': {
         'input': 'conversation',
         'output': 'pred_summary',
         'combined_output' : 'pred_summary_13b',
@@ -90,11 +83,6 @@ Make sure to use all the information from the dialogue into the note, but do not
 Make sure to use all the information from the dialogue into the note, but do not add any new information.""",
         'Now, generate the corresponding clinical note: '
     ],
-    'generator-gpt': [
-        """Given the provided JSON patient information summary, generate the corresponding clinical note as written by a physician.
-        Make sure to use all the information from the dialogue into the note, but do not add any new information.""",
-        'Now, generate the corresponding clinical note: '
-    ],
     'direct': [
         """Given the provided patient-doctor conversation, generate the corresponding clinical note as written by the physician.
 Make sure to use all the information from the dialogue into the note, but do not add any new information.""",
@@ -138,7 +126,7 @@ class PandasDataset(Dataset):
 
 def combine(input_path, output_path):
     '''
-    Combine the inferred data into a single file.
+    Combine the inferred dataframes into a single file.
     '''
     paths = [os.path.join(input_path, f) for f in os.listdir(input_path) if f.endswith('.jsonl')]
     files = list({path.split('/')[-1].split('.')[0]: load_file(path) for path in paths}.items())
@@ -147,12 +135,15 @@ def combine(input_path, output_path):
     
     combined_df = files[0][1].dropna()
     len_ = combined_df.shape[0]
-    combined_df = combined_df.rename(columns={KEYS[files[0][0]]['output']: KEYS[files[0][0]]['combined_output']})
 
-    for name,df in files[1:]:
-        df = df.rename(columns={KEYS[name]['output']: KEYS[name]['combined_output']})
+    for name, df in files: 
+        if KEYS[name]['output'] == 'pred_summary': 
+            if '7' in name:
+                df = df.rename(columns={'pred_summary': 'pred_summary_7b'})
+            elif '13' in name:
+                df = df.rename(columns={'pred_summary': 'pred_summary_13b'})
         combined_df = pd.merge(combined_df, df.dropna(), on=commom_columns, how='inner')
-    
+
     if len(combined_df) < len_:
         raise ValueError(f'Combined dataframe has less rows than the first dataframe.')
 
@@ -460,13 +451,9 @@ def infer(
 
     print(f"\n\n# ----- INFERENCE: mode = {mode}, model = {model_name} ----- #\n\n")
     instructions = INSTRUCTIONS[mode]
-    if mode == 'summarizer':
-        input_key, output_key = KEYS[model_name]['input'], KEYS[model_name]['output']
-    else:
-        input_key, output_key = KEYS[mode]['input'], KEYS[mode]['output']
-
+    input_key, output_key = KEYS[mode]['input'], KEYS[mode]['output']
     data_df = load_file(input_path)
-    print(f"\nLoaded data file with {data_df.shape[0]} samples and columns {list(data_df.columns)}...")
+    print(f"\nLoaded data file...\n\tSamples: {data_df.shape[0]}\n\tColumns: {list(data_df.columns)}")
     if 'idx' not in data_df.columns:
         data_df['idx'] = data_df.index
     data_df = data_df.reset_index(drop=True)
@@ -474,20 +461,20 @@ def infer(
 
     if os.path.exists(output_path):
         gen_df = load_file(output_path)
-        print(f"Loading output file with {gen_df.shape[0]} samples...")
+        print(f"Loading output file...\n\tSamples already generated: {gen_df.shape[0]}")
     else:
-        print(f"Creating output file at {output_path} with columns {list(data_df.columns)}...")
+        print(f"Creating output file...\n\tPath: {output_path}\n\tColumns: {list(data_df.columns)}")
         gen_df = pd.DataFrame(columns = data_df.columns)
         gen_df[output_key] = TODO_VAL
 
     idx_todo = todo_list(data_df, gen_df, input_key, output_key, num_samples)
-    print(f"{len(idx_todo)} samples to generate.")
+    print(f"\tSample left to generate: {len(idx_todo)}")
     
     data_df = data_df[data_df['idx'].isin(idx_todo)]
     batch_size = 1 if mode == 'summarizer' else 2
     inference_data = json.loads(data_df.to_json(orient='records'))
     data_loader = DataLoader(inference_data, batch_size=batch_size, shuffle=False)
-    print(f"Created data loader: {len(data_loader)} batches to generate with batch size {batch_size}.")
+    print(f"Created data loader\n\tBatches to generate: {len(data_loader)}\n\tBatch size: {batch_size}")
 
     print(f"Initializing vLLM client...")
     kwargs = {
@@ -504,7 +491,7 @@ def infer(
             prompts = batch[input_key]
             answers = [infer_summary(prompts[0], client, template, instructions, verbose=verbose)]
         else: 
-            prompts = [format_prompt(prompt, mode, instructions) for prompt in batch[input_key]]
+            prompts = [format_prompt(input, mode, instructions) for input in batch[input_key]]
             answers = infer_vllm(client, mode, prompts)
 
         if verbose:
