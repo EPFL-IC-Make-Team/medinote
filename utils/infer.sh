@@ -47,6 +47,16 @@ if [ "$1" == "meditron-7b-direct"  ] || [  "$1" == "all" ]; then
         --mode direct \
         --verbose $VERBOSE
 fi
+if [ "$1" == "meditron-7b-direct-trunc"  ] || [  "$1" == "all" ]; then
+    python3 utils/infer.py \
+        --model_name meditron-7b-direct-trunc \
+        --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-7b-direct-trunc/hf_checkpoint_new \
+        --input_path $INPUT_PATH \
+        --output_path /pure-mlo-scratch/make_project/data/inference/meditron-7b-direct-trunc.jsonl \
+        --num_samples $NUM_SAMPLES \
+        --mode direct \
+        --verbose $VERBOSE
+fi
 if [ "$1" == "meditron-13b-summarizer"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
         --model_name meditron-13b-summarizer \
@@ -78,9 +88,9 @@ if [ "$1" == "meditron-13b-generator-gpt"  ] || [  "$1" == "all" ]; then
         --mode generator-gpt  \
         --verbose $VERBOSE
 fi
-if [ "$1" == "meditron-13b-direct"  ] || [  "$1" == "all" ]; then
+if [ "$1" == "meditron-13b-direct-trunc"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
-        --model_name meditron-13b-direct \
+        --model_name meditron-13b-direct-trunc \
         --model_path /pure-mlo-scratch/make_project/trial-runs/pubmed-13b-direct-trunc/hf_checkpoint_new/ \
         --input_path $INPUT_PATH \
         --output_path /pure-mlo-scratch/make_project/data/inference/meditron-13b-direct-trunc.jsonl \

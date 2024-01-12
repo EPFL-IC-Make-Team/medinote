@@ -210,7 +210,7 @@ def format_prompt(prompt, mode, instructions):
     """
     if 'generator' in mode:
         prompt = '\n'.join([line for line in prompt.split('\n') if ': \"None\"' not in line])
-    prompt = f"{BOS_TOKEN}\n{instructions[0]}\n\n{prompt}\n\n{instructions[1]}{EOS_TOKEN}\n{BOS_TOKEN} "
+    prompt = f"{BOS_TOKEN}question\n{instructions[0]}\n\n{prompt}\n\n{instructions[1]}{EOS_TOKEN}\n{BOS_TOKEN}answer\n"
     return prompt
 
 def infer_vllm(client, mode, prompt):
