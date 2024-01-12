@@ -36,32 +36,26 @@ KEYS = {
     'summarizer': {
         'input': 'conversation',
         'output': 'pred_summary',
-        'combined_output' : 'pred_summary_13b',
         'gold': 'summary'
     },
-
     'generator': {
         'input': 'pred_summary',
         'output': 'pred_note',
-        'combined_output' : 'pred_note',
         'gold': 'data'
     },
     'generator-gpt': {
         'input': 'summary',
-        'output': 'pred_note-gpt',
-        'combine_output' : 'pred_note-gpt',
+        'output': 'pred_note_gpt',
         'gold': 'data'
     },
     'direct': {
         'input': 'conversation',
         'output': 'pred_direct',
-        'combined_output' : 'pred_direct',
         'gold': 'data'
     },
     'direct-gpt': {
         'input': 'conversation',
         'output': 'pred_direct-gpt',
-        'combined_output' : 'pred_direct-gpt',
         'gold': 'data'
     }
 }
@@ -113,26 +107,13 @@ PARAMETERS = {
 
 # ----------------------- Inference utilities ----------------------- #
 
-class PandasDataset(Dataset):
-    def __init__(self, dataframe):
-        self.dataframe = dataframe
-
-    def __len__(self):
-        return len(self.dataframe)
-    
-    def __getitem__(self, index):
-        return self.dataframe.iloc[index]
-        
-
 def combine(input_path, output_path):
     '''
     Combine the inferred dataframes into a single file.
     '''
     paths = [os.path.join(input_path, f) for f in os.listdir(input_path) if f.endswith('.jsonl')]
     files = list({path.split('/')[-1].split('.')[0]: load_file(path) for path in paths}.items())
- 
     commom_columns = list(set.intersection(*[set(file[1].columns) for file in files]))
-    
     combined_df = files[0][1].dropna()
     len_ = combined_df.shape[0]
 
@@ -148,7 +129,6 @@ def combine(input_path, output_path):
         raise ValueError(f'Combined dataframe has less rows than the first dataframe.')
 
     save_file(combined_df, output_path, mode='w')
-
     return combined_df
 
 def todo_list(data_df, gen_df, input_key, output_key, num_samples=None):
