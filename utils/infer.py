@@ -413,12 +413,12 @@ def infer_summary(dialogue,
     while not valid and max_tries > 0:
         if missing == {}:
             starter = '{\n"visit motivation":'
-            prompt = f'{instructions[0]}\n\n{dialogue}\n\n{instructions[1]}\n\n{starter}'
         else: 
             starter = '{\n"' + f'{list(missing.keys())[0]}":'
             missing_dict = formatting(json.dumps(missing, indent=4))
-            prompt_end = f'\n\nNow, fill in the following template: \n\n{missing_dict}\n\n{starter}'
-            prompt = f'{BOS_TOKEN}\n{instructions[0]}\n\n{dialogue}{prompt_end}\n{EOS_TOKEN}\n{BOS_TOKEN} '
+            instructions[1] = f"Now, fill in the following template:\n\n{missing_dict}"
+
+        prompt = format_prompt(dialogue, 'summarizer', instructions) + starter
         partial_answer = starter + infer_vllm(client, 'summarizer', prompt)
         limiter = re.search(r'}\s*}', partial_answer)
         if limiter: partial_answer = partial_answer[:limiter.end()].strip()
