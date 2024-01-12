@@ -417,7 +417,6 @@ def infer_summary(dialogue,
             starter = '{\n"' + f'{list(missing.keys())[0]}":'
             missing_dict = formatting(json.dumps(missing, indent=4))
             instructions[1] = f"Now, fill in the following template:\n\n{missing_dict}"
-
         prompt = format_prompt(dialogue, 'summarizer', instructions) + starter
         partial_answer = starter + infer_vllm(client, 'summarizer', prompt)
         limiter = re.search(r'}\s*}', partial_answer)
