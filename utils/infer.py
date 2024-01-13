@@ -224,11 +224,11 @@ def format_prompt(model_name, input, mode, instructions):
         input = '\n'.join([line for line in input.split('\n') if ': \"None\"' not in line])
         
     if 'mistral' in model_name.lower():
-        prompt = f"[INST]\n{instructions[0]}\n\n{prompt}\n\n{instructions[1]}[/INST]\n"
+        prompt = f"[INST]\n{instructions[0]}\n\n{input}\n\n{instructions[1]}[/INST]\n"
     elif 'llama' in model_name.lower():
-        prompt = f"### Instruction:\n\n### Input:\n{prompt}\n### Response:"
+        prompt = f"### Instruction:\n\n### Input:\n{input}\n### Response:"
     else: 
-        prompt = f"{BOS_TOKEN}question\n{instructions[0]}\n\n{prompt}\n\n{instructions[1]}{EOS_TOKEN}\n{BOS_TOKEN}answer\n"
+        prompt = f"{BOS_TOKEN}question\n{instructions[0]}\n\n{input}\n\n{instructions[1]}{EOS_TOKEN}\n{BOS_TOKEN}answer\n"
 
     return prompt
 

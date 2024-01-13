@@ -137,7 +137,7 @@ fi
 # BASELINE: Mistral-7B-Instruct-v0.1 (from HF)
 if [ "$1" == "mistral-7b-direct"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
-        --model_name mistral-7b-direct \
+        --model_name mistral-7b \
         --model_path mistralai/Mistral-7B-Instruct-v0.1 \
         --input_path $INPUT_PATH \
         --output_path /pure-mlo-scratch/make_project/data/inference/mistral-7b-direct.jsonl \
