@@ -6,6 +6,7 @@ OUTPUT_PATH=/pure-mlo-scratch/make_project/data/evaluation/generation.jsonl
 NUM_SAMPLES=1000
 VERBOSE=1
 
+# Models: Meditron 7B, Meditron 13B
 if [ "$1" == "meditron-7b-summarizer" ] || [ "$1" == "all" ]; then
     python3 utils/infer.py \
         --model_name meditron-7b-summarizer \
@@ -98,6 +99,8 @@ if [ "$1" == "meditron-13b-direct-trunc"  ] || [  "$1" == "all" ]; then
         --mode direct \
         --verbose $VERBOSE
 fi
+
+# BASELINES: GPT 3.5, Llama 2 (7B & 13B), Mistral 7B
 if [ "$1" == "gpt3-direct" ] || [ "$1" == "all" ]; then
     python3 utils/infer.py \
         --model_name gpt-3.5-turbo \
@@ -108,7 +111,48 @@ if [ "$1" == "gpt3-direct" ] || [ "$1" == "all" ]; then
         --mode direct-gpt \
         --verbose $VERBOSE
 fi
+if [ "$1" == "Llama-2-7b"  ] || [  "$1" == "all" ]; then
+    python3 utils/infer.py \
+        --model_name Llama-2-7b-chat-hf \
+        --model_path meta-llama/Llama-2-7b-chat-hf \
+        --input_path $INPUT_PATH \
+        --output_path /pure-mlo-scratch/make_project/data/inference/Llama-2-7b-direct.jsonl \
+        --num_samples $NUM_SAMPLES \
+        --mode direct \
+        --verbose $VERBOSE
+fi
+if [ "$1" == "Llama-2-13b"  ] || [  "$1" == "all" ]; then
+    python3 utils/infer.py \
+        --model_name Llama-2-13b-chat-hf \
+        --model_path meta-llama/Llama-2-13b-chat-hf \
+        --input_path $INPUT_PATH \
+        --output_path /pure-mlo-scratch/make_project/data/inference/Llama-2-7b-direct.jsonl \
+        --num_samples $NUM_SAMPLES \
+        --mode direct \
+        --verbose $VERBOSE
+fi
+if [ "$1" == "mistral-7b"  ] || [  "$1" == "all" ]; then
+    python3 utils/infer.py \
+        --model_name Mistral-7B-Instruct-v0.1 \
+        --model_path mistralai/Mistral-7B-Instruct-v0.1 \
+        --input_path $INPUT_PATH \
+        --output_path /pure-mlo-scratch/make_project/data/inference/Mistral-7b-direct.jsonl \
+        --num_samples $NUM_SAMPLES \
+        --mode direct \
+        --verbose $VERBOSE
+fi
+if [ "$1" == "phi-2"  ] || [  "$1" == "all" ]; then
+    python3 utils/infer.py \
+        --model_name phi-2 \
+        --model_path microsoft/phi-2 \
+        --input_path $INPUT_PATH \
+        --output_path /pure-mlo-scratch/make_project/data/inference/phi-2-direct.jsonl \
+        --num_samples $NUM_SAMPLES \
+        --mode direct \
+        --verbose $VERBOSE
+fi
 
+# Combine inference into a single file
 if [ "$1" == "combine" ] || [ "$1" == "all" ]; then
     python3 utils/infer.py \
         --mode combine \
