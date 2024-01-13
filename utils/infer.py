@@ -105,23 +105,12 @@ MODELS_TO_OUTPUT = {
     'meditron-13b-direct-trunc' : 'pred_direct_13b',
     'meditron-7b-generator' : 'pred_note_7b',
     'meditron-13b-generator' : 'pred_note_13b',
-    'llama-2-7b-chat' : 'pred_direct_llama-2-7b',
-    'llama-2-13b-chat' : 'pred_direct_llama-2-13b',
+    'llama-2-7b-chat' : 'pred_direct_llama-7b',
+    'llama-2-13b-chat' : 'pred_direct_llama-13b',
     'mistral-7b' : 'pred_direct_mistral-7b',
 }
 
-MODELS_TO_MODE = {
-    'direct-gpt' : 'direct', 
-    'meditron-7b-summarizer' : 'summarizer', 
-    'meditron-13b-summarizer' : 'summarizer',
-    'meditron-7b-direct-trunc' : 'direct',
-    'meditron-13b-direct-trunc' : 'direct',
-    'meditron-7b-generator' : 'generator',
-    'meditron-13b-generator' : 'generator',
-    'llama-2-7b-chat' : 'direct',
-    'llama-2-13b-chat' : 'direct',
-    'mistral-7b' : 'direct',
-}
+MODELS_TO_MODE = lambda x: 'summarizer' if 'summarizer' in x else 'generator' if 'generator' in x else 'direct'
 
 # ----------------------- Inference parameters ----------------------- #
 
@@ -154,7 +143,7 @@ def combine(input_path, output_path):
     files = list({path.split('/')[-1].split('.')[0]: load_file(path) for path in paths}.items())
 
     for name, df in files:
-        mode = MODELS_TO_MODE[name]
+        mode = MODELS_TO_MODE(name)
         df.rename(columns={KEYS[mode]['output']: MODELS_TO_OUTPUT[name]}, inplace=True)
         df.rename(columns={KEYS[mode]['input']: f"{MODELS_TO_INPUT[name]}"}, inplace=True)
 
