@@ -141,16 +141,17 @@ if [ "$1" == "mistral-7b"  ] || [  "$1" == "all" ]; then
         --mode direct \
         --verbose $VERBOSE
 fi
-if [ "$1" == "phi-2"  ] || [  "$1" == "all" ]; then
-    python3 utils/infer.py \
-        --model_name phi-2 \
-        --model_path microsoft/phi-2 \
-        --input_path $INPUT_PATH \
-        --output_path /pure-mlo-scratch/make_project/data/inference/phi-2-direct.jsonl \
-        --num_samples $NUM_SAMPLES \
-        --mode direct \
-        --verbose $VERBOSE
-fi
+# PHI-2 not supported for now
+# if [ "$1" == "phi-2"  ] || [  "$1" == "all" ]; then
+#     python3 utils/infer.py \
+#         --model_name phi-2 \
+#         --model_path microsoft/phi-2 \
+#         --input_path $INPUT_PATH \
+#         --output_path /pure-mlo-scratch/make_project/data/inference/phi-2-direct.jsonl \
+#         --num_samples $NUM_SAMPLES \
+#         --mode direct \
+#         --verbose $VERBOSE
+# fi
 
 # Combine inference into a single file
 if [ "$1" == "combine" ] || [ "$1" == "all" ]; then

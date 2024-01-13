@@ -95,7 +95,7 @@ MODELS_TO_INPUT = {
     'Llama-2-7b-direct' : 'conversation',
     'Llama-2-13b-direct' : 'conversation',
     'Mistral-7b-direct' : 'conversation',
-    'phi-2-direct' : 'conversation',
+    #'phi-2-direct' : 'conversation',
 }
 
 MODELS_TO_OUTPUT = {
@@ -109,7 +109,7 @@ MODELS_TO_OUTPUT = {
     'Llama-2-7b-direct' : 'pred_direct_llama-2-7b',
     'Llama-2-13b-direct' : 'pred_direct_llama-2-13b',
     'Mistral-7b-direct' : 'pred_direct_mistral-7b',
-    'phi-2-direct' : 'pred_direct_phi-2',
+    #'phi-2-direct' : 'pred_direct_phi-2',
 }
 
 MODELS_TO_MODE = {
@@ -123,7 +123,7 @@ MODELS_TO_MODE = {
     'Llama-2-7b-direct' : 'direct',
     'Llama-2-13b-direct' : 'direct',
     'Mistral-7b-direct' : 'direct',
-    'phi-2-direct' : 'direct',
+    #'phi-2-direct' : 'direct',
 }
 
 # ----------------------- Inference parameters ----------------------- #
