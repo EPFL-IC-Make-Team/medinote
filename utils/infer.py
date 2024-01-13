@@ -215,7 +215,7 @@ def format_prompt(model_name, input, mode, instructions):
     if 'mistral' in model_name.lower():
         prompt = f"[INST]\n{instructions[0]}\n\n{input}\n\n{instructions[1]}[/INST]\n"
     elif 'llama' in model_name.lower():
-        prompt = f"### Instruction:\n\n### Input:\n{input}\n### Response:"
+        prompt = f"[INST] <<SYS>>\n{instructions[0]}\n<</SYS>>\n\n{input}\n\n{instructions[1]} [/INST]"
     else: 
         prompt = f"{BOS_TOKEN}question\n{instructions[0]}\n\n{input}\n\n{instructions[1]}{EOS_TOKEN}\n{BOS_TOKEN}answer\n"
 
