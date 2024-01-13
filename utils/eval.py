@@ -23,15 +23,12 @@ from utils.saving_manager import *
 import numpy as np
 import argparse
 from evaluate import load
-from multielo import MultiElo, Player, Tracker
+from multielo import MultiElo, Player
 import matplotlib.pyplot as plt
 import sys
 import os
 import json
 from tqdm import tqdm
-
-import nltk
-from nltk.corpus import stopwords
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 
@@ -42,40 +39,41 @@ BLEU_SCORER = load("bleu")
 NONE_MATCH  = "None_Match"
 NO_SUCH_KEY = "no_such_key"
 NONE_FIELD = "None"
-ALL_SCORE_TYPES = ['bleu', 'rouge', 'bert', 'gpt_rank', 'gpt_score']
+ALL_SCORE_TYPES = ['bleu', 'rouge', 'bert', 'gpt_score']
 ROUGE_SUB_SCORES = ['rouge1', 'rouge2',	'rougeL', 'rougeLsum']
+
+ALL_SCORE_TYPES_OUTPUT = [score for score in ALL_SCORE_TYPES if score != 'rouge'] + ROUGE_SUB_SCORES
+
 COUNTS_TYPES = ['missing_keys_count', 'extra_keys_count', 'common_none_count',  
                 'gold_none_count', 'pred_none_count', 'common_non_none', 'all_keys_count']
 KEY_MISMATCH_TYPE = ['gold_none_keys', 'pred_none_keys', 'missing_keys']
 #MODELS_TO_COLUMN = {'our_model': 'pred_note', 'gpt_3': 'pred_note_gpt3', 'our_model_direct': 'pred_direct', 'gold' : 'data'}
 from itertools import combinations
 
-
-
 EVAL_DIR = 'evaluation'
 os.makedirs(EVAL_DIR, exist_ok=True)
 
 # ----------------------- 0 - Prepare Evaluation inputs ----------------------- #
-    
+
 def save_evaluation_input(eval_input_filename, inference_df, pred_data, gold_data):
     eval_input = inference_df[['idx', gold_data, pred_data]].dropna()
     eval_input = eval_input.rename(columns={gold_data: 'gold', pred_data: 'pred'})
-    if gold_data == 'summary':
+    if gold_data == 'summary': #post processing of summaries
         for key in ['gold', 'pred']:
             eval_input[key] = eval_input[key].apply(lambda x: json.loads((x.replace('\n', ' ').replace(
             '""None""', '"None"').replace(
                 '""None', '').replace('''", },''','''" },'''))))
     save_file(eval_input, eval_input_filename)
 
-def build_evaluation_inputs(combined_inferences_path, eval_input_dir_path = EVAL_DIR ,models = KEYS.keys()):
-    combined_inference_sample = load_file(combined_inferences_path)
+def build_evaluation_inputs(combined_inferences_path, eval_input_dir_path = EVAL_DIR ,models = MODELS_TO_MODE.keys()):
+    combined_inference = load_file(combined_inferences_path)
     for model in models:
-        if model not in KEYS.keys():
-            raise ValueError(f"Model {model} is not valid. Please choose between {KEYS.keys()}")
-        save_evaluation_input(f'{eval_input_dir_path}/{model}_evaluation_input.jsonl', combined_inference_sample, KEYS[model]['combined_output'], KEYS[model]['gold'])
+        if model not in MODELS_TO_MODE.keys():
+            raise ValueError(f"Model {model} is not valid. Please choose between {MODELS_TO_MODE.keys()}.")
+        save_evaluation_input(f'{eval_input_dir_path}/{model}_evaluation_input.jsonl', combined_inference, MODELS_TO_OUTPUT[model], KEYS[MODELS_TO_MODE[model]]['gold'])
 
-    models = [model for model in models if 'summarizer' not in model] 
-    save_elo_inputs('elo_inputs.jsonl', combined_inference_sample, models)
+    models = [model for model in models if 'summarizer' not in model] + ['gold'] 
+    save_elo_inputs('elo_inputs.jsonl', combined_inference, models)
 
 def save_elo_inputs(output_filename, inference_sample, models_to_compare):
     #Selecting columns to keep
@@ -84,12 +82,15 @@ def save_elo_inputs(output_filename, inference_sample, models_to_compare):
             raise ValueError("Summarizer cannot be used for Elo ranking.")
 
     if len(models_to_compare) >=2:
-        outputs_notes = inference_sample[['idx', 'data'] +[KEYS[model]['output'] for model in models_to_compare]].dropna()
-
-        #Renaming columns
-        outputs_notes = outputs_notes.rename(columns={KEYS[model]['output']: model for model in models_to_compare})
+        outputs_notes = inference_sample[['idx','data'] + [MODELS_TO_OUTPUT[model] for model in models_to_compare if model != 'gold']].dropna()
+        
+        #renaming columns
+        outputs_notes = outputs_notes.rename(columns={MODELS_TO_OUTPUT[model]: model for model in models_to_compare if model != 'gold'})
+        outputs_notes = outputs_notes.rename(columns={'data': 'gold'})
+        
         #Possible pair combinations:
         model_pairs = list(combinations(models_to_compare, 2))
+        print(model_pairs)
 
         #Creating a dataframe with all possible pairs
         all_pairs_df = pd.DataFrame()
@@ -272,6 +273,11 @@ def get_counts_and_clean_dict(flattened_dict):
 
     return counts, clean_flat_dict, key_mismatches
 
+
+    
+
+    
+
 def summary_statistics(golds, preds, saving_manager, score_types=['rouge', 'bleu', 'bert', 'gpt_score']):
     '''
     Given several (gold,pred) patient summaries pairs, flatten and match keys, 
@@ -422,12 +428,30 @@ def summary_evaluation(model_name,save_path = None ,score_types=['bleu', 'rouge'
 
     # Compute average matching scores accrosss all keys for each metric for each patient summary
     if eval_saving.get_progress_dict()['eval_by_sample'] != 'done':
+        mean_scores = [f"mean_{metric}" for metric in new_score_types]
+        for mean_metric, metric in zip(mean_scores, new_score_types):
+            dataset[mean_metric] = stats[metric].apply(lambda x: np.mean(x))
 
-        for metric in new_score_types:
-            dataset[f"mean_{metric}"] = stats[metric].apply(lambda x: np.mean(x))
+        normalized_scores = [f"normalized_{metric}" for metric in new_score_types]
+
+        for normalized_metric, mean_metric in zip(normalized_scores, mean_scores):
+            mean = dataset[mean_metric].mean()
+            std = dataset[mean_metric].std()
+            dataset[normalized_metric] = dataset[mean_metric].apply(lambda x: (x - mean) / std)
+            max = dataset[normalized_metric].max()
+            min = dataset[normalized_metric].min()
+            dataset[normalized_metric] = dataset[normalized_metric].apply(lambda x: (x - min) / (max - min))
+        
+        score_weights = {normalized_metric : 1/len(ROUGE_SUB_SCORES) if 'rouge' in normalized_metric else 1 for normalized_metric in normalized_scores}
+
+        dataset['aggregated_score'] = dataset[normalized_scores].multiply(dataset[normalized_scores].replace(score_weights)).sum(axis=1) / sum(score_weights.values())
+
+        dataset.drop(columns= normalized_scores, inplace=True)
         
         for count_type in COUNTS_TYPES:
             dataset[count_type] = stats[count_type]
+        
+        dataset['aggregated_score'] = dataset['aggregated_score'] * (dataset['common_none_count'] + dataset['common_non_none']) / dataset['all_keys_count']
         eval_saving.save_eval_by_sample(dataset)
     else:
         dataset = eval_saving.load_eval_by_sample()
@@ -464,15 +488,6 @@ def summary_evaluation(model_name,save_path = None ,score_types=['bleu', 'rouge'
     return dataset, score_by_keys
 
 # ----------------------- 2 - Clinical note evaluation ----------------------- #
-
-def remove_stopwords(text):
-    stop_words = set(stopwords.words('english'))
-    word_tokens = nltk.word_tokenize(text)
-    filtered_text = [word for word in word_tokens if word.lower() not in stop_words]
-    return ' '.join(filtered_text)
-
-def remove_stopwords_from_pair(pair):
-    return {'gold': remove_stopwords(pair['gold']), 'pred': remove_stopwords(pair['pred'])}
 
 def note_evaluation(model_name, save_path = None ,score_types=['bleu', 'rouge', 'bert', 'gpt_score']): 
     '''
@@ -516,6 +531,22 @@ def note_evaluation(model_name, save_path = None ,score_types=['bleu', 'rouge', 
 
     for metric in new_score_types:
         df[metric] = scores[metric]
+
+    normalized_scores = [f"normalized_{metric}" for metric in new_score_types]
+
+    for normalized_metric, metric in zip(normalized_scores, new_score_types):
+        mean = df[metric].mean()
+        std = df[metric].std()
+        df[normalized_metric] = df[metric].apply(lambda x: (x - mean) / std)
+        max = df[normalized_metric].max()
+        min = df[normalized_metric].min()
+        df[normalized_metric] = df[normalized_metric].apply(lambda x: (x - min) / (max - min))
+    
+    score_weights = {normalized_metric : 1/len(ROUGE_SUB_SCORES) if 'rouge' in normalized_metric else 1 for normalized_metric in normalized_scores}
+
+    df['aggregated_score'] = df[normalized_scores].multiply(df[normalized_scores].replace(score_weights)).sum(axis=1) / sum(score_weights.values())
+
+    df.drop(columns= normalized_scores, inplace=True)
 
     df.drop(['idxs', 'pairs'], axis=1, inplace=True)
 
@@ -582,7 +613,28 @@ def elo_ranking(path, frac = 0.25 ,save_path = None):
 
     return elo_histories
 
+def merge_note_evaluations(model_names, save_path = None):
+    ''' 
+    Merge note evaluations for several models into one dataframe.
+    Arguments:
+        - model_names (list of str): list of models to merge
+        - save_path (str): path to save the merged dataframe
+    Returns:
+        - merged_df (pd.DataFrame): merged dataframe with all models' evaluations means
+    '''
 
+    eval_res_paths = [f'evaluation/{model_name}_eval_res/all_scores.jsonl' for model_name in model_names]
+
+    dfs = [load_file(path).reset_index(drop=True) for path in eval_res_paths]
+    dfs_means = [df[ALL_SCORE_TYPES_OUTPUT].mean() for df in dfs]
+
+    result_df = pd.DataFrame({'model': model_names})
+    for score in ALL_SCORE_TYPES_OUTPUT:
+        result_df[score] = [df_mean.loc[score] for df_mean in dfs_means]
+
+    return result_df   
+    
+    
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', 

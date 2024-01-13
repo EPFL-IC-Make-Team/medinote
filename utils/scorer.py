@@ -20,6 +20,8 @@ import sys
 import os
 import time
 from concurrent.futures import ProcessPoolExecutor
+import nltk
+from nltk.corpus import stopwords
 
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
@@ -39,6 +41,15 @@ ALL_SCORE_TYPES = ['bleu', 'rouge', 'bert', 'gpt_rank', 'gpt_score']
 ROUGE_SUB_SCORES = ['rouge1', 'rouge2',	'rougeL', 'rougeLsum']
 COUNTS_TYPES = ['missing_keys_count', 'extra_keys_count', 'common_none_count',  'gold_none_count', 'pred_none_count', 'common', 'total']
 KEY_MISMATCH_TYPE = ['gold_none_keys', 'pred_none_keys', 'missing_keys']
+
+def remove_stopwords(text):
+    stop_words = set(stopwords.words('english'))
+    word_tokens = nltk.word_tokenize(text)
+    filtered_text = [word for word in word_tokens if word.lower() not in stop_words]
+    return ' '.join(filtered_text)
+
+def remove_stopwords_from_pair(pair):
+    return {'gold': remove_stopwords(pair['gold']), 'pred': remove_stopwords(pair['pred'])}
 
 # ----------------------- Scoring functions (BLEU/ROUGE/BERT/GPT-4) ----------------------- #
 
@@ -77,7 +88,8 @@ class Scorer():
 
         if remove_stopwords and ('bleu' in self.score_types or 'rouge' in self.score_types):
             print("Removing stopwords...")
-            pairs_df['pairs_prep'] = pairs_df['pairs'].apply(lambda x: remove_stopwords_from_pair(x))
+            tqdm.pandas()
+            pairs_df['pairs_prep'] = pairs_df['pairs'].progress_apply(lambda x: remove_stopwords_from_pair(x))
             print("Stopwords removed.")
         else:
             pairs_df['pairs_prep'] = pairs_df['pairs']
@@ -119,7 +131,7 @@ class Scorer():
 
             bleu_scores = {'bleu': [BLEU_SCORER.compute(
                 predictions=[pair['pred']],
-                references=[pair['gold']])['bleu'] 
+                references=[pair['gold']])['bleu'] if len(pair['gold']) > 0 and len(pair['pred']) > 0 else 0
                 for pair in tqdm(pairs_to_compute, total = len(pairs_to_compute) ,desc="Computing BLEU scores")]}
             
             self.saving_manager.save_one_score(pd.DataFrame(bleu_scores),'bleu',done = True)
@@ -149,7 +161,7 @@ class Scorer():
             batches = [pairs_to_compute.iloc[i:i + batch_size].copy() for i in range(0, len(pairs_to_compute), batch_size)]
             for i, batch in tqdm(enumerate(batches), total = len(batches) ,desc="Computing Rouge scores"):
                 rouges = [ROUGE_SCORER.compute(
-                    predictions=[pair['pred']], references=[pair['gold']])
+                    predictions=[pair['pred']], references=[pair['gold']]) if len(pair['gold']) > 0 and len(pair['pred']) > 0 else {metric: 0 for metric in ROUGE_SUB_SCORES}
                     for pair in batch['pairs_prep']]
             
                 for metric in ROUGE_SUB_SCORES:
@@ -261,7 +273,7 @@ class Scorer():
                    model_name='gpt-4-1106-preview',
                    chat=chat_gpt_4_turbo,
                    max_tokens = 300,
-                   one_call_batch_size = 5, 
+                   one_call_batch_size = 3, 
                    temperature=0.0):
         ''' 
         For each pair of gold and pred strings, ask GPT-4 to pick which one is the best.

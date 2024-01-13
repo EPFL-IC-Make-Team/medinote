@@ -17,7 +17,7 @@ import sys
 import os
 import time
 import numpy as np
-import vllm
+#import vllm
 import json as json
 from tqdm import tqdm
 from torch.utils.data import DataLoader, Dataset
@@ -84,6 +84,36 @@ Make sure to use all the information from the dialogue into the note, but do not
     ]
 }
 
+MODELS_TO_INPUT = {
+    'direct-gpt' : 'conversation', 
+    'meditron-7b-summarizer' : 'conversation', 
+    'meditron-13b-summarizer' : 'conversation',
+    'meditron-7b-direct-trunc' : 'conversation',
+    'meditron-13b-direct-trunc' : 'conversation',
+    'meditron-7b-generator' : 'pred_summary_7b',
+    'meditron-13b-generator' : 'pred_summary_13b',
+}
+
+MODELS_TO_OUTPUT = {
+    'direct-gpt' : 'pred_direct-gpt', 
+    'meditron-7b-summarizer' : 'pred_summary_7b', 
+    'meditron-13b-summarizer' : 'pred_summary_13b',
+    'meditron-7b-direct-trunc' : 'pred_direct_7b',
+    'meditron-13b-direct-trunc' : 'pred_direct_13b',
+    'meditron-7b-generator' : 'pred_note_7b',
+    'meditron-13b-generator' : 'pred_note_13b',
+}
+
+MODELS_TO_MODE = {
+    'direct-gpt' : 'direct', 
+    'meditron-7b-summarizer' : 'summarizer', 
+    'meditron-13b-summarizer' : 'summarizer',
+    'meditron-7b-direct-trunc' : 'direct',
+    'meditron-13b-direct-trunc' : 'direct',
+    'meditron-7b-generator' : 'generator',
+    'meditron-13b-generator' : 'generator',
+}
+
 # ----------------------- Inference parameters ----------------------- #
 
 GREEDY_PARAMETERS = {
@@ -113,17 +143,19 @@ def combine(input_path, output_path):
     '''
     paths = [os.path.join(input_path, f) for f in os.listdir(input_path) if f.endswith('.jsonl')]
     files = list({path.split('/')[-1].split('.')[0]: load_file(path) for path in paths}.items())
-    commom_columns = list(set.intersection(*[set(file[1].columns) for file in files]))
+
+    for name, df in files:
+        mode = MODELS_TO_MODE[name]
+        df.rename(columns={KEYS[mode]['output']: MODELS_TO_OUTPUT[name]}, inplace=True)
+        df.rename(columns={KEYS[mode]['input']: f"{MODELS_TO_INPUT[name]}"}, inplace=True)
+
+    common_columns = list(set.intersection(*[set(df.columns) for name, df in files]))
     combined_df = files[0][1].dropna()
     len_ = combined_df.shape[0]
 
-    for name, df in files: 
-        if KEYS[name]['output'] == 'pred_summary': 
-            if '7' in name:
-                df = df.rename(columns={'pred_summary': 'pred_summary_7b'})
-            elif '13' in name:
-                df = df.rename(columns={'pred_summary': 'pred_summary_13b'})
-        combined_df = pd.merge(combined_df, df.dropna(), on=commom_columns, how='inner')
+    for name, df in files[1:]:
+        common_columns = list(set.intersection(set(combined_df.columns), set(df.columns)))
+        combined_df = pd.merge(combined_df, df.dropna(), on=common_columns, how='inner')
 
     if len(combined_df) < len_:
         raise ValueError(f'Combined dataframe has less rows than the first dataframe.')

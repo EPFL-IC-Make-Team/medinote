@@ -1,6 +1,7 @@
 import os
 import json
 import pandas as pd
+import numpy as np
 
 SUMMARY_EVALUATION_STEPS = {'create eval directory' : 'tbd', 'flatten and match dicts' : 'tbd', 'clean dicts and counts' : 'tbd', 'summary_statistics' : 'tbd', 'scores' : 'tbd', 'pairs_idx' : 'tbd' ,'eval_by_sample' : 'tbd', 'eval_by_key' : 'tbd'}
 NOTE_EVALUATION_STEPS = {'create eval directory' : 'tbd', 'scores' : 'tbd'}
@@ -9,7 +10,7 @@ ELO_RANKING_STEPS = {'create eval directory' : 'tbd', 'build_sub_batch' : 'tbd',
 class EvalSaving():
     def __init__(self, steps ,path, save_path = None):
         if save_path is None:
-            save_path = path.replace('.jsonl', '_eval_res')
+            save_path = path.replace('evaluation_input.jsonl', 'eval_res')
             self.save_path = save_path
         else:
             self.save_path = save_path
@@ -60,7 +61,7 @@ class EvalSaving():
         self.save_progress_dict()
 
     def load_summary_statistics(self):
-        return pd.read_json(f"{self.save_path}/summary_statistics.jsonl", orient='records', lines=True)
+        return pd.read_json(f"{self.save_path}/summary_statistics.jsonl", orient='records', lines=True).fillna(value=np.nan)
     
     def save_eval_by_sample(self, df, delete_summary_statistics = False):
         df.to_json(f"{self.save_path}/summary_eval_by_sample.jsonl", orient='records', lines=True)
@@ -68,17 +69,15 @@ class EvalSaving():
         self.save_progress_dict()
 
     def load_eval_by_sample(self):
-        return pd.read_json(f"{self.save_path}/summary_eval_by_sample.jsonl", orient='records', lines=True)
+        return pd.read_json(f"{self.save_path}/summary_eval_by_sample.jsonl", orient='records', lines=True).fillna(value=np.nan)
     
-    def save_eval_by_key(self, df, delete_summary_statistics = False):
+    def save_eval_by_key(self, df):
         df.to_json(f"{self.save_path}/summary_eval_by_key.jsonl", orient='records', lines=True)
         self.progress_dict['eval_by_key'] = 'done'
-        if delete_summary_statistics:
-            os.remove(f"{self.save_path}/summary_statistics.jsonl")
         self.save_progress_dict()
 
     def load_eval_by_key(self):
-        return pd.read_json(f"{self.save_path}/summary_eval_by_key.jsonl", orient='records', lines=True)
+        return pd.read_json(f"{self.save_path}/summary_eval_by_key.jsonl", orient='records', lines=True).fillna(value=np.nan)
     
     def save_pairs_idx(self, df):
         df.to_json(f"{self.save_path}/pairs_to_score.jsonl", orient='records', lines=True)
@@ -101,12 +100,12 @@ class EvalSaving():
         return pd.read_json(f"{self.save_path}/{score_name}.jsonl", orient='records', lines=True)
             
     def save_all_scores(self, df):
-        df.to_json(f"{self.save_path}/_scores.jsonl", orient='records', lines=True)
+        df.to_json(f"{self.save_path}/all_scores.jsonl", orient='records', lines=True)
         self.progress_dict['scores'] = 'done'
         self.save_progress_dict()
     
     def load_all_scores(self):
-        return pd.read_json(f"{self.save_path}/_scores.jsonl", orient='records', lines=True)
+        return pd.read_json(f"{self.save_path}/all_scores.jsonl", orient='records', lines=True)
 
     def save_sub_batch(self, df):
         df.to_json(f"{self.save_path}/sub_batch_for_elo.jsonl", orient='records', lines=True)
