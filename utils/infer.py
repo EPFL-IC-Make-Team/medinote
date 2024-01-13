@@ -31,6 +31,7 @@ from utils.chat import *
 
 BOS_TOKEN, EOS_TOKEN = '<|im_start|>', '<|im_end|>'
 TODO_VAL = -1
+BATCH_SIZE = 4
 
 KEYS = {
     'summarizer': {
@@ -215,7 +216,7 @@ def format_prompt(model_name, input, mode, instructions):
     if 'mistral' in model_name.lower():
         prompt = f"[INST]\n{instructions[0]}\n\n{input}\n\n{instructions[1]}[/INST]\n"
     elif 'llama' in model_name.lower():
-        prompt = f"[INST] <<SYS>>\n{instructions[0]}\n<</SYS>>\n\n{input}\n\n{instructions[1]} [/INST]"
+        prompt = f"<s>[INST] <<SYS>>\n{instructions[0]}\n<</SYS>>\n\n{input}\n\n{instructions[1]} [/INST]"
     else: 
         prompt = f"{BOS_TOKEN}question\n{instructions[0]}\n\n{input}\n\n{instructions[1]}{EOS_TOKEN}\n{BOS_TOKEN}answer\n"
 
@@ -399,7 +400,8 @@ def check_summary(answer, prev_answer, template):
     valid = (len(missing) == 0)
     return valid, missing, prev_answer
 
-def infer_summary(dialogue, 
+def infer_summary(model_name,
+                  dialogue, 
                   client, 
                   template, 
                   instructions, 
@@ -488,7 +490,7 @@ def infer(
     print(f"\tSample left to generate: {len(idx_todo)}")
     
     data_df = data_df[data_df['idx'].isin(idx_todo)]
-    batch_size = 1 if mode == 'summarizer' else 2
+    batch_size = 1 if mode == 'summarizer' else BATCH_SIZE
     inference_data = json.loads(data_df.to_json(orient='records'))
     data_loader = DataLoader(inference_data, batch_size=batch_size, shuffle=False)
     print(f"Created data loader\n\tBatches to generate: {len(data_loader)}\n\tBatch size: {batch_size}")
@@ -506,7 +508,7 @@ def infer(
     for batch in tqdm(data_loader, total=len(data_loader), position=0, leave=True):
         if mode == 'summarizer':
             prompts = batch[input_key]
-            answers = [infer_summary(prompts[0], client, template, instructions, verbose=verbose)]
+            answers = [infer_summary(model_name, prompts[0], client, template, instructions, verbose=verbose)]
         else: 
             prompts = [format_prompt(model_name, input, mode, instructions) for input in batch[input_key]]
             answers = infer_vllm(client, mode, prompts)
