@@ -111,27 +111,27 @@ if [ "$1" == "gpt3-direct" ] || [ "$1" == "all" ]; then
         --mode direct-gpt \
         --verbose $VERBOSE
 fi
-if [ "$1" == "Llama-2-7b"  ] || [  "$1" == "all" ]; then
+if [ "$1" == "llama-2-7b-direct"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
-        --model_name Llama-2-7b-chat-hf \
-        --model_path meta-llama/Llama-2-7b-chat-hf \
+        --model_name llama-2-7b-chat-hf \
+        --model_path /pure-mlo-scratch/llama2/llama-2-7b-chat \
         --input_path $INPUT_PATH \
-        --output_path /pure-mlo-scratch/make_project/data/inference/Llama-2-7b-direct.jsonl \
+        --output_path /pure-mlo-scratch/make_project/data/inference/llama-2-7b-direct.jsonl \
         --num_samples $NUM_SAMPLES \
         --mode direct \
         --verbose $VERBOSE
 fi
-if [ "$1" == "Llama-2-13b"  ] || [  "$1" == "all" ]; then
+if [ "$1" == "llama-2-13b-direct"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
-        --model_name Llama-2-13b-chat-hf \
-        --model_path meta-llama/Llama-2-13b-chat-hf \
+        --model_name llama-2-13b-chat-hf \
+        --model_path /pure-mlo-scratch/llama2/llama-2-13b-chat \
         --input_path $INPUT_PATH \
-        --output_path /pure-mlo-scratch/make_project/data/inference/Llama-2-7b-direct.jsonl \
+        --output_path /pure-mlo-scratch/make_project/data/inference/llama-2-13b-direct.jsonl \
         --num_samples $NUM_SAMPLES \
         --mode direct \
         --verbose $VERBOSE
 fi
-if [ "$1" == "mistral-7b"  ] || [  "$1" == "all" ]; then
+if [ "$1" == "mistral-7b-direct"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
         --model_name Mistral-7B-Instruct-v0.1 \
         --model_path mistralai/Mistral-7B-Instruct-v0.1 \
