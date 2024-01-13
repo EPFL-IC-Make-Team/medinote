@@ -95,7 +95,6 @@ MODELS_TO_INPUT = {
     'Llama-2-7b-direct' : 'conversation',
     'Llama-2-13b-direct' : 'conversation',
     'Mistral-7b-direct' : 'conversation',
-    #'phi-2-direct' : 'conversation',
 }
 
 MODELS_TO_OUTPUT = {
@@ -109,7 +108,6 @@ MODELS_TO_OUTPUT = {
     'Llama-2-7b-direct' : 'pred_direct_llama-2-7b',
     'Llama-2-13b-direct' : 'pred_direct_llama-2-13b',
     'Mistral-7b-direct' : 'pred_direct_mistral-7b',
-    #'phi-2-direct' : 'pred_direct_phi-2',
 }
 
 MODELS_TO_MODE = {
@@ -123,7 +121,6 @@ MODELS_TO_MODE = {
     'Llama-2-7b-direct' : 'direct',
     'Llama-2-13b-direct' : 'direct',
     'Mistral-7b-direct' : 'direct',
-    #'phi-2-direct' : 'direct',
 }
 
 # ----------------------- Inference parameters ----------------------- #
@@ -210,7 +207,7 @@ def load_template(template_path):
         template = json.load(f)
     return template
 
-def format_prompt(prompt, mode, instructions):
+def format_prompt(model_name, input, mode, instructions):
     """
     Format prompt for inference as follows:
 
@@ -223,9 +220,16 @@ def format_prompt(prompt, mode, instructions):
     <|im_end|>
     <|im_start|> 
     """
-    if 'generator' in mode:
-        prompt = '\n'.join([line for line in prompt.split('\n') if ': \"None\"' not in line])
-    prompt = f"{BOS_TOKEN}question\n{instructions[0]}\n\n{prompt}\n\n{instructions[1]}{EOS_TOKEN}\n{BOS_TOKEN}answer\n"
+    if 'generator' in mode: # remove None features
+        input = '\n'.join([line for line in input.split('\n') if ': \"None\"' not in line])
+        
+    if 'mistral' in model_name.lower():
+        prompt = f"[INST]\n{instructions[0]}\n\n{prompt}\n\n{instructions[1]}[/INST]\n"
+    elif 'llama' in model_name.lower():
+        prompt = f"### Instruction:\n\n### Input:\n{prompt}\n### Response:"
+    else: 
+        prompt = f"{BOS_TOKEN}question\n{instructions[0]}\n\n{prompt}\n\n{instructions[1]}{EOS_TOKEN}\n{BOS_TOKEN}answer\n"
+
     return prompt
 
 def infer_vllm(client, mode, prompt):
@@ -432,7 +436,7 @@ def infer_summary(dialogue,
             starter = '{\n"' + f'{list(missing.keys())[0]}":'
             missing_dict = formatting(json.dumps(missing, indent=4))
             instructions[1] = f"Now, fill in the following template:\n\n{missing_dict}"
-        prompt = format_prompt(dialogue, 'summarizer', instructions) + starter
+        prompt = format_prompt(model_name, dialogue, 'summarizer', instructions) + starter
         partial_answer = starter + infer_vllm(client, 'summarizer', prompt)
         limiter = re.search(r'}\s*}', partial_answer)
         if limiter: partial_answer = partial_answer[:limiter.end()].strip()
@@ -515,7 +519,7 @@ def infer(
             prompts = batch[input_key]
             answers = [infer_summary(prompts[0], client, template, instructions, verbose=verbose)]
         else: 
-            prompts = [format_prompt(input, mode, instructions) for input in batch[input_key]]
+            prompts = [format_prompt(model_name, input, mode, instructions) for input in batch[input_key]]
             answers = infer_vllm(client, mode, prompts)
 
         if verbose:

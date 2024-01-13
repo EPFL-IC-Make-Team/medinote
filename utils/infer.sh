@@ -100,7 +100,7 @@ if [ "$1" == "meditron-13b-direct-trunc"  ] || [  "$1" == "all" ]; then
         --verbose $VERBOSE
 fi
 
-# BASELINES: GPT 3.5, Llama 2 (7B & 13B), Mistral 7B
+# BASELINE: GPT 3.5 (from API)
 if [ "$1" == "gpt3-direct" ] || [ "$1" == "all" ]; then
     python3 utils/infer.py \
         --model_name gpt-3.5-turbo \
@@ -111,26 +111,33 @@ if [ "$1" == "gpt3-direct" ] || [ "$1" == "all" ]; then
         --mode direct-gpt \
         --verbose $VERBOSE
 fi
+
+# BASELINE: LLama-2 (7B/13B) (from local weights)
 if [ "$1" == "llama-2-7b-direct"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
         --model_name llama-2-7b-chat-hf \
-        --model_path /pure-mlo-scratch/llama2/llama-2-7b-chat \
+        --model_path meta-llama/Llama-2-7b-chat-hf \
         --input_path $INPUT_PATH \
+        --output_path /pure-mlo-scratch/make_project/data/inference/llama-2-7b-direct.jsonl \
         --output_path /pure-mlo-scratch/make_project/data/inference/llama-2-7b-direct.jsonl \
         --num_samples $NUM_SAMPLES \
         --mode direct \
         --verbose $VERBOSE
 fi
 if [ "$1" == "llama-2-13b-direct"  ] || [  "$1" == "all" ]; then
+if [ "$1" == "llama-2-13b-direct"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
         --model_name llama-2-13b-chat-hf \
-        --model_path /pure-mlo-scratch/llama2/llama-2-13b-chat \
+        --model_path meta-llama/Llama-2-13b-chat-hf \
         --input_path $INPUT_PATH \
+        --output_path /pure-mlo-scratch/make_project/data/inference/llama-2-13b-direct.jsonl \
         --output_path /pure-mlo-scratch/make_project/data/inference/llama-2-13b-direct.jsonl \
         --num_samples $NUM_SAMPLES \
         --mode direct \
         --verbose $VERBOSE
 fi
+
+# BASELINE: Mistral-7B-Instruct-v0.1 (from HF)
 if [ "$1" == "mistral-7b-direct"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
         --model_name Mistral-7B-Instruct-v0.1 \
@@ -141,17 +148,6 @@ if [ "$1" == "mistral-7b-direct"  ] || [  "$1" == "all" ]; then
         --mode direct \
         --verbose $VERBOSE
 fi
-# PHI-2 not supported for now
-# if [ "$1" == "phi-2"  ] || [  "$1" == "all" ]; then
-#     python3 utils/infer.py \
-#         --model_name phi-2 \
-#         --model_path microsoft/phi-2 \
-#         --input_path $INPUT_PATH \
-#         --output_path /pure-mlo-scratch/make_project/data/inference/phi-2-direct.jsonl \
-#         --num_samples $NUM_SAMPLES \
-#         --mode direct \
-#         --verbose $VERBOSE
-# fi
 
 # Combine inference into a single file
 if [ "$1" == "combine" ] || [ "$1" == "all" ]; then
