@@ -115,22 +115,19 @@ fi
 # BASELINE: LLama-2 (7B/13B) (from local weights)
 if [ "$1" == "llama-2-7b-direct"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
-        --model_name llama-2-7b-chat-hf \
+        --model_name llama-2-7b-chat \
         --model_path meta-llama/Llama-2-7b-chat-hf \
         --input_path $INPUT_PATH \
-        --output_path /pure-mlo-scratch/make_project/data/inference/llama-2-7b-direct.jsonl \
         --output_path /pure-mlo-scratch/make_project/data/inference/llama-2-7b-direct.jsonl \
         --num_samples $NUM_SAMPLES \
         --mode direct \
         --verbose $VERBOSE
 fi
 if [ "$1" == "llama-2-13b-direct"  ] || [  "$1" == "all" ]; then
-if [ "$1" == "llama-2-13b-direct"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
-        --model_name llama-2-13b-chat-hf \
+        --model_name llama-2-13b-chat \
         --model_path meta-llama/Llama-2-13b-chat-hf \
         --input_path $INPUT_PATH \
-        --output_path /pure-mlo-scratch/make_project/data/inference/llama-2-13b-direct.jsonl \
         --output_path /pure-mlo-scratch/make_project/data/inference/llama-2-13b-direct.jsonl \
         --num_samples $NUM_SAMPLES \
         --mode direct \
@@ -140,10 +137,10 @@ fi
 # BASELINE: Mistral-7B-Instruct-v0.1 (from HF)
 if [ "$1" == "mistral-7b-direct"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
-        --model_name Mistral-7B-Instruct-v0.1 \
+        --model_name mistral-7b-direct \
         --model_path mistralai/Mistral-7B-Instruct-v0.1 \
         --input_path $INPUT_PATH \
-        --output_path /pure-mlo-scratch/make_project/data/inference/Mistral-7b-direct.jsonl \
+        --output_path /pure-mlo-scratch/make_project/data/inference/mistral-7b-direct.jsonl \
         --num_samples $NUM_SAMPLES \
         --mode direct \
         --verbose $VERBOSE

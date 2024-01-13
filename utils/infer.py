@@ -92,9 +92,9 @@ MODELS_TO_INPUT = {
     'meditron-13b-direct-trunc' : 'conversation',
     'meditron-7b-generator' : 'pred_summary_7b',
     'meditron-13b-generator' : 'pred_summary_13b',
-    'Llama-2-7b-direct' : 'conversation',
-    'Llama-2-13b-direct' : 'conversation',
-    'Mistral-7b-direct' : 'conversation',
+    'llama-2-7b-chat' : 'conversation',
+    'llama-2-13b-chat' : 'conversation',
+    'mistral-7b' : 'conversation',
 }
 
 MODELS_TO_OUTPUT = {
@@ -105,9 +105,9 @@ MODELS_TO_OUTPUT = {
     'meditron-13b-direct-trunc' : 'pred_direct_13b',
     'meditron-7b-generator' : 'pred_note_7b',
     'meditron-13b-generator' : 'pred_note_13b',
-    'Llama-2-7b-direct' : 'pred_direct_llama-2-7b',
-    'Llama-2-13b-direct' : 'pred_direct_llama-2-13b',
-    'Mistral-7b-direct' : 'pred_direct_mistral-7b',
+    'llama-2-7b-chat' : 'pred_direct_llama-2-7b',
+    'llama-2-13b-chat' : 'pred_direct_llama-2-13b',
+    'mistral-7b' : 'pred_direct_mistral-7b',
 }
 
 MODELS_TO_MODE = {
@@ -118,9 +118,9 @@ MODELS_TO_MODE = {
     'meditron-13b-direct-trunc' : 'direct',
     'meditron-7b-generator' : 'generator',
     'meditron-13b-generator' : 'generator',
-    'Llama-2-7b-direct' : 'direct',
-    'Llama-2-13b-direct' : 'direct',
-    'Mistral-7b-direct' : 'direct',
+    'llama-2-7b-chat' : 'direct',
+    'llama-2-13b-chat' : 'direct',
+    'mistral-7b' : 'direct',
 }
 
 # ----------------------- Inference parameters ----------------------- #
