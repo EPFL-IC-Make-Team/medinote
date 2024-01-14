@@ -613,7 +613,7 @@ def elo_ranking(path, frac = 0.25 ,save_path = None):
 
     return elo_histories
 
-def merge_note_evaluations(model_names, save_path = None):
+def merge_note_evaluations(model_names):
     ''' 
     Merge note evaluations for several models into one dataframe.
     Arguments:
@@ -624,11 +624,19 @@ def merge_note_evaluations(model_names, save_path = None):
     '''
 
     eval_res_paths = [f'evaluation/{model_name}_eval_res/all_scores.jsonl' for model_name in model_names]
+    dfs = []
+    done_model_names = []
+    for path, name in zip(eval_res_paths, model_names):
+        try:
+            df = load_file(path).reset_index(drop=True)
+            dfs.append(df)
+            done_model_names.append(name)
+        except ValueError:
+            print(f"{path} not existing yet")
 
-    dfs = [load_file(path).reset_index(drop=True) for path in eval_res_paths]
     dfs_means = [df[ALL_SCORE_TYPES_OUTPUT].mean() for df in dfs]
 
-    result_df = pd.DataFrame({'model': model_names})
+    result_df = pd.DataFrame({'model': done_model_names})
     for score in ALL_SCORE_TYPES_OUTPUT:
         result_df[score] = [df_mean.loc[score] for df_mean in dfs_means]
 
