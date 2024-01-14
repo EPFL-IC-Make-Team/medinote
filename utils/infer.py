@@ -81,7 +81,6 @@ Make sure to use all the information from the dialogue into the note, but do not
 }
 
 MODELS_TO_INPUT = {
-    'direct-gpt' : 'conversation', 
     'meditron-7b-summarizer' : 'conversation', 
     'meditron-13b-summarizer' : 'conversation',
     'meditron-7b-direct-trunc' : 'conversation',
@@ -91,10 +90,13 @@ MODELS_TO_INPUT = {
     'llama-2-7b-chat' : 'conversation',
     'llama-2-13b-chat' : 'conversation',
     'mistral-7b' : 'conversation',
+    'gpt3-direct' : 'conversation',
+    'gpt3-generator-gpt' : 'summary',
+    'gpt3-generator-7b' : 'pred_summary_7b',
+    'gpt3-generator-13b' : 'pred_summary_13b',
 }
 
 MODELS_TO_OUTPUT = {
-    'direct-gpt' : 'pred_direct-gpt', 
     'meditron-7b-summarizer' : 'pred_summary_7b', 
     'meditron-13b-summarizer' : 'pred_summary_13b',
     'meditron-7b-direct-trunc' : 'pred_direct_7b',
@@ -104,6 +106,10 @@ MODELS_TO_OUTPUT = {
     'llama-2-7b-chat' : 'pred_direct_llama-7b',
     'llama-2-13b-chat' : 'pred_direct_llama-13b',
     'mistral-7b' : 'pred_direct_mistral-7b',
+    'gpt3-direct' : 'pred_direct_gpt3',
+    'gpt3-generator-gpt' : 'pred_note_gpt3',
+    'gpt3-generator-7b' : 'pred_note_gpt3-7b',
+    'gpt3-generator-13b' : 'pred_note_gpt3-13b',
 }
 
 MODELS_TO_MODE = lambda x: 'summarizer' if 'summarizer' in x else 'generator' if 'generator' in x else 'direct'
@@ -140,10 +146,10 @@ def combine(input_path, output_path):
 
     for name, df in files:
         mode = MODELS_TO_MODE(name)
+        df.rename(columns={KEYS[mode]['input']: MODELS_TO_INPUT[name]}, inplace=True)
         df.rename(columns={KEYS[mode]['output']: MODELS_TO_OUTPUT[name]}, inplace=True)
-        df.rename(columns={KEYS[mode]['input']: f"{MODELS_TO_INPUT[name]}"}, inplace=True)
 
-    common_columns = list(set.intersection(*[set(df.columns) for name, df in files]))
+    common_columns = list(set.intersection(*[set(df.columns) for _, df in files]))
     combined_df = files[0][1].dropna()
     len_ = combined_df.shape[0]
 
@@ -292,13 +298,13 @@ class Timer():
 
 def infer_openai(input_path,
                  output_path,
+                 model_name,
+                 mode,
                  train_path = None,
                  max_tokens = 1000000,
                  num_samples = 1000,
-                 openai_model = 'gpt-3.5-turbo',
                  temperature = 1.0,
-                 shots = 1,
-                 mode = 'direct-gpt'):
+                 shots = 1):
     '''
     Generate clinical notes from conversations using an OpenAI model.
 
@@ -312,19 +318,22 @@ def infer_openai(input_path,
     :param shots: int, number of few-shot examples to load 
     :param mode: str, mode of inference (direct-gpt, generator-gpt)
     '''
+    if 'gpt3' in model_name: 
+        openai_model = 'gpt-3.5-turbo'
+        chat = chat_gpt_3
+        price = 0.001
+    elif 'gpt4' in model_name: 
+        openai_model = 'gpt-4'
+        chat = chat_gpt_4_turbo
+        price = 0.01
+    else: 
+        raise ValueError(f'Model name {model_name} is not supported. ')
 
-    print(f"\n\n# ----- INFERENCE: mode = {mode} ----- #\n\n")
+    print(f"\n\n# ----- INFERENCE: mode = {mode}, model_name = {model_name} ----- #\n\n")
     instruction, usr_prompt = INSTRUCTIONS[mode.replace('-gpt', '')]
     input_key, output_key = KEYS[mode]['input'], KEYS[mode]['output']
     data_df, gen_df = load_data(input_path, output_path, mode, num_samples=num_samples)
     few_shot_prompt = load_few_shot(train_path, shots=shots)
-
-    print("Loading model...")
-    if openai_model not in ['gpt-3.5-turbo', 'gpt-4']:
-        raise ValueError(f'OpenAI model {openai_model} not found.')
-    price_per_1ktokens = 0.001 if openai_model == 'gpt-3.5-turbo' else 0.01
-    chat = chat_gpt_3 if openai_model == 'gpt-3.5-turbo' else chat_gpt_4_turbo
-
     prompts = [(f"{instruction}\n\n{few_shot_prompt}\n\n{dialogue}", usr_prompt) 
                for dialogue in tqdm(data_df[input_key].tolist(), desc='Building prompts')]
     data_df['messages'] = [build_messages(*prompt) for prompt in prompts]
@@ -332,12 +341,12 @@ def infer_openai(input_path,
                             model = openai_model,
                             max_token_per_partition=max_tokens)
     total_tokens = np.sum([nb_tok for _, nb_tok in sub_batches])
-    print(f"Total input tokens: {total_tokens}, total input cost: {total_tokens/1000 * price_per_1ktokens}$")
+    print(f"Total input tokens: {total_tokens}, total input cost: {total_tokens/1000 * price}$")
     timer = Timer()
 
     for i, (sub_batch_df, nb_tokens) in enumerate(sub_batches):
         print(f"Sub_batch {i+1}/{len(sub_batches)}: {sub_batch_df.shape[0]} calls, \
-              {nb_tokens} total tokens: {nb_tokens/1000 * price_per_1ktokens}$")
+              {nb_tokens} total tokens: {nb_tokens/1000 * price}$")
         timer.start()
         answers = generate_answers(
             messages_list = sub_batch_df['messages'].tolist(),
@@ -538,16 +547,22 @@ if __name__ == "__main__":
     parser.add_argument('--train_path',
                         type=str,
                         default=None,
-                        help='Path to the training data file. Used to sample few-shot examples for direct-gpt inference.')
+                        help='Path to the training data file. \
+                            Used to sample few-shot examples for direct-gpt inference.')
+    parser.add_argument('--shots',
+                        type=int,
+                        default=0,
+                        help='Number of few-shot examples for GPT inference. \
+                            Must be provided with a train_path to sample exemplars.')
     parser.add_argument('--mode',
                         type=str,
                         default='summarizer',
                         choices=['summarizer', 'generator', 'generator-gpt', 'direct', 'direct-gpt'],
-                        help='Mode of inference: summarizer, generator, generator-gpt, direct, direct-gpt')
+                        help='Mode of inference: summarizer, generator, generator-gpt, direct, direct-gpt.')
     parser.add_argument('--verbose',
                         type=int,
                         default=1,
-                        help='Whether to print prompts and answers')
+                        help='Whether to print prompts and answers.')
     parser.add_argument('--combine',
                         action='store_true',
                         default=False,
@@ -562,19 +577,20 @@ if __name__ == "__main__":
         infer_openai(
             input_path=args.input_path,
             output_path=args.output_path,
+            model_name=args.model_name,
             train_path=args.train_path,
-            openai_model=args.model_name,
             num_samples=args.num_samples,
-            mode=args.mode
+            mode=args.mode,
+            shots=args.shots,
         )
     else:
         infer(
             model_name=args.model_name,
             model_path=args.model_path,
+            mode=args.mode,
             input_path=args.input_path,
             output_path=args.output_path,
             num_samples=args.num_samples,
             template_path=args.template_path,
-            mode=args.mode,
             verbose=args.verbose
         )

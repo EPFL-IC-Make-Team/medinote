@@ -105,7 +105,7 @@ fi
 # Dialogue -> Note (1-shot)
 if [ "$1" == "gpt3-direct" ] || [ "$1" == "all" ]; then
     python3 utils/infer.py \
-        --model_name gpt-3.5-turbo \
+        --model_name gpt3-direct \
         --input_path $INPUT_PATH \
         --output_path /pure-mlo-scratch/make_project/data/inference/gpt3-direct.jsonl \
         --train_path /pure-mlo-scratch/make_project/data/raw/summaries_full_train.jsonl \
@@ -116,7 +116,7 @@ fi
 # GPT summary -> Note (0-shot)
 if [ "$1" == "gpt3-generator-gpt" ] || [ "$1" == "all" ]; then
     python3 utils/infer.py \
-        --model_name gpt-3.5-turbo \
+        --model_name gpt3-generator-gpt \
         --input_path $INPUT_PATH \
         --output_path /pure-mlo-scratch/make_project/data/inference/gpt3-generator-gpt.jsonl \
         --num_samples $NUM_SAMPLES \
@@ -126,7 +126,7 @@ fi
 # meditron-7b-summarizer's summary -> Note (0-shot)
 if [ "$1" == "gpt3-generator-7b" ] || [ "$1" == "all" ]; then
     python3 utils/infer.py \
-        --model_name gpt-3.5-turbo \
+        --model_name gpt3-generator-7b \
         --input_path /pure-mlo-scratch/make_project/data/inference/meditron-7b-summarizer.jsonl \
         --output_path /pure-mlo-scratch/make_project/data/inference/gpt3-generator-7b.jsonl \
         --num_samples $NUM_SAMPLES \
@@ -136,7 +136,7 @@ fi
 # meditron-13b-summarizer's summary -> Note (0-shot)
 if [ "$1" == "gpt3-generator-13b" ] || [ "$1" == "all" ]; then
     python3 utils/infer.py \
-        --model_name gpt-3.5-turbo \
+        --model_name gpt3-generator-13b \
         --input_path /pure-mlo-scratch/make_project/data/inference/meditron-13b-summarizer.jsonl \
         --output_path /pure-mlo-scratch/make_project/data/inference/gpt3-generator-13b.jsonl \
         --num_samples $NUM_SAMPLES \
