@@ -279,7 +279,7 @@ def load_few_shot(train_path, shots=1):
             few_shot_prompt += f'Example {i+1}:\n\nConversation:\n\n{dialogue}\n\nClinical note:\n\n{note}\n\n'
     else: 
         few_shot_prompt = 'Your answer should consist in one or a few paragrpahs of text, not overstructured.'
-    return few_shot_prompt
+    return few_shot_prompt + '\n\n'
 
 class Timer(): 
     def __init__(self): 
@@ -334,8 +334,8 @@ def infer_openai(input_path,
     input_key, output_key = KEYS[mode]['input'], KEYS[mode]['output']
     data_df, gen_df = load_data(input_path, output_path, mode, num_samples=num_samples)
     few_shot_prompt = load_few_shot(train_path, shots=shots)
-    prompts = [(f"{instruction}\n\n{few_shot_prompt}\n\n{dialogue}", usr_prompt) 
-               for dialogue in tqdm(data_df[input_key].tolist(), desc='Building prompts')]
+    prompts = [(f"{instruction}\n\n{few_shot_prompt}\n\n{input}", usr_prompt) 
+               for input in tqdm(data_df[input_key].tolist(), desc='Building prompts')]
     data_df['messages'] = [build_messages(*prompt) for prompt in prompts]
     sub_batches = partition(dataframe = data_df, 
                             model = openai_model,

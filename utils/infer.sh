@@ -111,6 +111,7 @@ if [ "$1" == "gpt3-direct" ] || [ "$1" == "all" ]; then
         --train_path /pure-mlo-scratch/make_project/data/raw/summaries_full_train.jsonl \
         --num_samples $NUM_SAMPLES \
         --mode direct-gpt \
+        --shots 0 \
         --verbose $VERBOSE
 fi
 # GPT summary -> Note (0-shot)
@@ -121,6 +122,7 @@ if [ "$1" == "gpt3-generator-gpt" ] || [ "$1" == "all" ]; then
         --output_path /pure-mlo-scratch/make_project/data/inference/gpt3-generator-gpt.jsonl \
         --num_samples $NUM_SAMPLES \
         --mode generator-gpt \
+        --shots 0 \
         --verbose $VERBOSE
 fi
 # meditron-7b-summarizer's summary -> Note (0-shot)
@@ -131,6 +133,7 @@ if [ "$1" == "gpt3-generator-7b" ] || [ "$1" == "all" ]; then
         --output_path /pure-mlo-scratch/make_project/data/inference/gpt3-generator-7b.jsonl \
         --num_samples $NUM_SAMPLES \
         --mode generator-gpt \
+        --shots 0 \
         --verbose $VERBOSE
 fi
 # meditron-13b-summarizer's summary -> Note (0-shot)
