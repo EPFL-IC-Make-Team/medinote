@@ -17,7 +17,10 @@ import sys
 import os
 import time
 import numpy as np
-import vllm
+try:
+    import vllm
+except ImportError:
+    print("")
 import json as json
 from tqdm import tqdm
 from torch.utils.data import DataLoader, Dataset
@@ -45,7 +48,7 @@ KEYS = {
         'gold': 'data'
     },
     'generator-gpt': {
-        'input': 'summary',
+        'input': 'pred_summary',
         'output': 'pred_note_gpt',
         'gold': 'data'
     },
@@ -53,6 +56,11 @@ KEYS = {
         'input' : 'summary',
         'output' : 'pred_note_gold',
         'gold' : 'data'
+    },
+    'generator-gpt-gold': {
+        'input': 'summary',
+        'output': 'pred_note_gpt',
+        'gold': 'data'
     },
     'direct': {
         'input': 'conversation',
@@ -94,7 +102,7 @@ MODELS_TO_INPUT = {
     'meditron-13b-generator' : 'pred_summary_13b',
     'llama-2-7b-chat' : 'conversation',
     'llama-2-13b-chat' : 'conversation',
-    'mistral-7b' : 'conversation',
+    'mistral-7b-direct' : 'conversation',
     'gpt3-direct' : 'conversation',
     'gpt3-generator-gpt' : 'summary',
     'gpt3-generator-7b' : 'pred_summary_7b',
@@ -112,16 +120,32 @@ MODELS_TO_OUTPUT = {
     'meditron-13b-generator' : 'pred_note_13b',
     'llama-2-7b-chat' : 'pred_direct_llama-7b',
     'llama-2-13b-chat' : 'pred_direct_llama-13b',
-    'mistral-7b' : 'pred_direct_mistral-7b',
+    'mistral-7b-direct' : 'pred_direct_mistral-7b',
     'gpt3-direct' : 'pred_direct_gpt3',
-    'gpt3-generator-gpt' : 'pred_note_gpt3',
+    'gpt3-generator-gpt' : 'pred_note_gpt3-gold',
     'gpt3-generator-7b' : 'pred_note_gpt3-7b',
     'gpt3-generator-13b' : 'pred_note_gpt3-13b',
     'meditron-7b-generator-gold' : 'pred_note_gold-7b',
     'meditron-13b-generator-gold' : 'pred_note_gold-13b'
 }
 
-MODELS_TO_MODE = lambda x: 'summarizer' if 'summarizer' in x else 'generator' if 'generator' in x else 'direct'
+MODELS_TO_MODE = {
+    'meditron-7b-summarizer' : 'summarizer',
+    'meditron-13b-summarizer' : 'summarizer',
+    'meditron-7b-direct-trunc' : 'direct',
+    'meditron-13b-direct-trunc' : 'direct',
+    'meditron-7b-generator' : 'generator',
+    'meditron-13b-generator' : 'generator',
+    'llama-2-7b-chat' : 'direct',
+    'llama-2-13b-chat' : 'direct',
+    'mistral-7b-direct' : 'direct',
+    'gpt3-direct' : 'direct-gpt',
+    'gpt3-generator-gpt' : 'generator-gpt-gold',
+    'gpt3-generator-7b' : 'generator-gpt',
+    'gpt3-generator-13b' : 'generator-gpt',
+    'meditron-7b-generator-gold' : 'generator-gold',    
+    'meditron-13b-generator-gold' : 'generator-gold'
+}
 
 # ----------------------- Inference parameters ----------------------- #
 
@@ -155,11 +179,10 @@ def combine(input_path, output_path):
     files = list({path.split('/')[-1].split('.')[0]: load_file(path) for path in paths}.items())
 
     for name, df in files:
-        mode = MODELS_TO_MODE(name)
+        mode = MODELS_TO_MODE[name]
         df.rename(columns={KEYS[mode]['input']: MODELS_TO_INPUT[name]}, inplace=True)
         df.rename(columns={KEYS[mode]['output']: MODELS_TO_OUTPUT[name]}, inplace=True)
 
-    common_columns = list(set.intersection(*[set(df.columns) for _, df in files]))
     combined_df = files[0][1].dropna()
     len_ = combined_df.shape[0]
 
