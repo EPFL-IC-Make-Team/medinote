@@ -49,6 +49,11 @@ KEYS = {
         'output': 'pred_note_gpt',
         'gold': 'data'
     },
+    'generator-gold' : {
+        'input' : 'summary',
+        'output' : 'pred_note_gold',
+        'gold' : 'data'
+    },
     'direct': {
         'input': 'conversation',
         'output': 'pred_direct',
@@ -94,6 +99,8 @@ MODELS_TO_INPUT = {
     'gpt3-generator-gpt' : 'summary',
     'gpt3-generator-7b' : 'pred_summary_7b',
     'gpt3-generator-13b' : 'pred_summary_13b',
+    'meditron-7b-generator-gold' : 'summary',
+    'meditron-13b-generator-gold' : 'summary'
 }
 
 MODELS_TO_OUTPUT = {
@@ -110,6 +117,8 @@ MODELS_TO_OUTPUT = {
     'gpt3-generator-gpt' : 'pred_note_gpt3',
     'gpt3-generator-7b' : 'pred_note_gpt3-7b',
     'gpt3-generator-13b' : 'pred_note_gpt3-13b',
+    'meditron-7b-generator-gold' : 'pred_note_gold-7b',
+    'meditron-13b-generator-gold' : 'pred_note_gold-13b'
 }
 
 MODELS_TO_MODE = lambda x: 'summarizer' if 'summarizer' in x else 'generator' if 'generator' in x else 'direct'
@@ -131,6 +140,7 @@ GREEDY_PARAMETERS = {
 PARAMETERS = {
     'summarizer': GREEDY_PARAMETERS,
     'generator': GREEDY_PARAMETERS,
+    'generator-gold' : GREEDY_PARAMETERS,
     'generator-gpt': GREEDY_PARAMETERS,
     'direct': GREEDY_PARAMETERS
 }
@@ -478,7 +488,7 @@ def infer(model_name,
     '''
 
     print(f"\n\n# ----- INFERENCE: mode = {mode}, model = {model_name} ----- #\n\n")
-    instructions = INSTRUCTIONS[mode.replace('-gpt', '')]
+    instructions = INSTRUCTIONS[mode.replace('-gpt', '').replace('-gold', '')]
     input_key, output_key = KEYS[mode]['input'], KEYS[mode]['output']
     data_df, gen_df = load_data(input_path, output_path, mode, num_samples=num_samples)
     template = None if mode != 'summarizer' else load_template(template_path)
@@ -557,7 +567,7 @@ if __name__ == "__main__":
     parser.add_argument('--mode',
                         type=str,
                         default='summarizer',
-                        choices=['summarizer', 'generator', 'generator-gpt', 'direct', 'direct-gpt'],
+                        choices=KEYS.keys(),
                         help='Mode of inference: summarizer, generator, generator-gpt, direct, direct-gpt.')
     parser.add_argument('--verbose',
                         type=int,

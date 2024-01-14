@@ -28,6 +28,18 @@ if [ "$1" == "meditron-7b-generator"  ] || [  "$1" == "all" ]; then
         --mode generator  \
         --verbose $VERBOSE
 fi
+
+if [ "$1" == "meditron-7b-generator-gold"  ] || [  "$1" == "all" ]; then
+    python3 utils/infer.py \
+        --model_name meditron-7b-generator-gold \
+        --model_path /pure-mlo-scratch/make_project/trial-runs/meditron-7b-generator/hf_checkpoint_new/ \
+        --input_path /pure-mlo-scratch/make_project/data/raw/summaries_full_test.jsonl \
+        --output_path /pure-mlo-scratch/make_project/data/inference/meditron-7b-generator-gold.jsonl \
+        --num_samples $NUM_SAMPLES \
+        --mode generator-gold  \
+        --verbose $VERBOSE
+fi
+
 if [ "$1" == "meditron-7b-generator-gpt"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
         --model_name meditron-7b-generator-gpt \
@@ -69,6 +81,7 @@ if [ "$1" == "meditron-13b-summarizer"  ] || [  "$1" == "all" ]; then
         --template_path /pure-mlo-scratch/make_project/ClinicalNotes/generation/templates/template.json \
         --verbose $VERBOSE
 fi
+
 if [ "$1" == "meditron-13b-generator"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
         --model_name meditron-13b-generator \
@@ -79,6 +92,18 @@ if [ "$1" == "meditron-13b-generator"  ] || [  "$1" == "all" ]; then
         --mode generator \
         --verbose $VERBOSE
 fi
+
+if [ "$1" == "meditron-13b-generator-gold"  ] || [  "$1" == "all" ]; then
+    python3 utils/infer.py \
+        --model_name meditron-13b-generator-gold \
+        --model_path /pure-mlo-scratch/make_project/trial-runs/pubmed-13b-generator/hf_checkpoint_new/ \
+        --input_path /pure-mlo-scratch/make_project/data/raw/summaries_full_test.jsonl \
+        --output_path /pure-mlo-scratch/make_project/data/inference/meditron-13b-generator-gold.jsonl \
+        --num_samples $NUM_SAMPLES \
+        --mode generator-gold \
+        --verbose $VERBOSE
+fi
+
 if [ "$1" == "meditron-13b-generator-gpt"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
         --model_name meditron-13b-generator-gpt \
@@ -89,6 +114,7 @@ if [ "$1" == "meditron-13b-generator-gpt"  ] || [  "$1" == "all" ]; then
         --mode generator-gpt  \
         --verbose $VERBOSE
 fi
+
 if [ "$1" == "meditron-13b-direct-trunc"  ] || [  "$1" == "all" ]; then
     python3 utils/infer.py \
         --model_name meditron-13b-direct-trunc \
