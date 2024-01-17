@@ -257,6 +257,23 @@ def load_template(template_path):
         template = json.load(f)
     return template
 
+def format_prompt(model_name, input, mode, instructions):
+    """
+    Format prompt for inference with model-specific formatting.
+    Models supported: meditron, llama, mistral. 
+    """
+    if 'generator' in mode: # remove None features
+        input = '\n'.join([line for line in input.split('\n') if ': \"None\"' not in line])
+        
+    if 'mistral' in model_name.lower():
+        prompt = f"[INST]\n{instructions[0]}\n\n{input}\n\n{instructions[1]}[/INST]\n"
+    elif 'llama' in model_name.lower():
+        prompt = f"<s>[INST] <<SYS>>\n{instructions[0]}\n<</SYS>>\n\n{input}\n\n{instructions[1]} [/INST]"
+    else: 
+        prompt = f"{BOS_TOKEN}question\n{instructions[0]}\n\n{input}\n\n{instructions[1]}{EOS_TOKEN}\n{BOS_TOKEN}answer\n"
+
+    return prompt
+
 def infer_vllm(client, mode, prompt):
     """
     Inference using the VLLM backend (offline mode). 
@@ -583,11 +600,30 @@ if __name__ == "__main__":
                         action='store_true',
                         default=False,
                         help='Whether to combine the generated notes into a single file.')
+    parser.add_argument('--dialogue',
+                        type=str,
+                        default=None,
+                        help='Dialogue to generate from.')
+    
     args = parser.parse_args()
 
     if args.combine: 
         combine(input_path=args.input_path, 
                 output_path=args.output_path)
+        
+    elif args.dialogue: 
+        print(f"Initializing vLLM client...")
+        kwargs = {
+            "model": args.model_path,
+            "tokenizer": args.model_path,
+            "trust_remote_code": True,
+            "max_num_seqs": 2048,
+            "tensor_parallel_size": torch.cuda.device_count(),
+        }
+        client = vllm.LLM(**kwargs)
+        prompt = format_prompt('medinote', args.dialogue, 'direct', INSTRUCTIONS['direct'])
+        answer = infer_vllm(client, 'direct', prompt)
+        print(f'\n\n{answer}')
 
     elif 'gpt' in args.model_name: 
         infer_openai(
