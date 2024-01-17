@@ -7,11 +7,7 @@ MediNote is a suite of open-source medical Large Language Models (LLMs) trained 
 
 ### Architecture
 
-We fine-tune our models from [MediTron](https://arxiv.org/abs/2311.16079), variants of Llama-2 whose pre-training was extended to PubMed articles, abstracts and clinical practice guidelines. 
-
-
-
-
+We fine-tune MediTron models, variants of Llama-2 whose pre-training was extended to PubMed articles, abstracts and clinical practice guidelines. 
 
 ####
 
@@ -104,7 +100,7 @@ Here is the template we used to generate patient summaries from the NoteChat dat
 
 Here are the prompts used for training and inference:
 <p align="center">
-    <img src="figures/prompts.png" width="80%"> 
+    <img src="figures/prompts.png" width="70%"> 
 </p>
 
 ### Acknowledgments
