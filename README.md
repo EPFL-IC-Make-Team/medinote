@@ -46,11 +46,40 @@ We fine-tune Meditron on the (`patient summary`, `clinical note`) pairs extracte
 
 ### **Running our code**
 
-First prepare the NoteChat data and generate triplets using:
+You can download the [Augmented Clinical Notes](https://huggingface.co/datasets/AGBonnet/augmented-clinical-notes) dataset directly from Huggingface as follows: 
+
+````python
+from datasets import load_dataset
+dataset = load_dataset("AGBonnet/augmented-clinical-notes")
+````
+
+You can load the [MediNote-7B](https://huggingface.co/AGBonnet/medinote-7b) and [MediNote-13B](https://huggingface.co/AGBonnet/medinote-13b) models directly from Huggingface as follows:
+
+````python
+from transformers import AutoTokenizer, AutoModelForCausalLM
+tokenizer = AutoTokenizer.from_pretrained("AGBonnet/medinote-7b")
+model = AutoModelForCausalLM.from_pretrained("AGBonnet/medinote-7b")
+````
+
+
+
+### **Reproducibility**
+
+To replicate our experiments, you can run our data preprocessing script by first creating the Augmented Clinical Notes dataset as follows: 
 
 ```bash
 python utils/data.py
 ```
+
+You can fine-tune MediNote-7B by loading the [Meditron-7B](https://huggingface.co/epfl-llm/meditron-70b) from Huggingface and using the [Megatron-LLM](https://github.com/epfLLM/Megatron-LLM) distributed trainer code. See the documentation for a detailed description of the training procedure. 
+
+Finally, running inference for all evaluated models can be run as follows: 
+
+```bash
+./utils/infer.sh all
+```
+
+#### **Step 3: Generate clinical notes**
 
 Running inference is done as follows:
 
