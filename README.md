@@ -5,27 +5,26 @@ MediNote is a suite of open-source medical Large Language Models (LLMs) trained 
 
 [MediNote-7B](https://huggingface.co/AGBonnet/medinote-7b) and [MediNote-13B](https://huggingface.co/AGBonnet/medinote-13b) are fine-tuned from the [Meditron](https://arxiv.org/abs/2311.16079) foundation model to generate clinical notes from doctor-patient conversations.
 
-### Architecture
+### Models
 
 We fine-tune MediTron models, variants of Llama-2 whose pre-training was extended to PubMed articles, abstracts and clinical practice guidelines. 
-
-####
 
 <p align="center">
     <img src="figures/model_pipeline.png" width="80%"> 
 </p>
 
-### Fine-tuning data
+### Data
+
+Our primary source of clinical notes is the [**PMC-patients**](https://arxiv.org/abs/2202.13876) dataset. This large-scale dataset contains 167K patient summaries extracted from open-access case studies published in PubMed Central. 
+
+Distribution of confidential patient-doctor conversations is forbidden, so no large scale dataset is publicly available for training.
+We circumvent the lack of real dialogue data by building upon [**NoteChat**](https://huggingface.co/datasets/akemiH/NoteChat), an extension of PMC-Patients with synthetic patient-doctor conversations generated with ChatGPT.
+
+We augment the NoteChat dataset by extracting structured patient information from clinical notes as fine-tuning data for the intermediary step in chained CNG models. To do so, we prompt GPT-4 with zero-shot instructions, providing clinical notes and a structured template of patient medical information with feature definition. This template encapsulates crucial aspects of a clinical note such as the patient's admission to a care center, medical history, current symptoms, as well as the doctor's diagnosis and treatment plan. We release the resulting [**Augmented Clinical Notes**](https://huggingface.co/datasets/AGBonnet/augmented-clinical-notes) shown below.
 
 <p align="center">
-    <img src="figures/data_pipeline.png" width="80%"> 
+    <img src="figures/data_pipeline.png" width="90%"> 
 </p>
-
-
-
-#### *NoteChat*: Fine-tuning data
-
-For our fine-tuning data, we will use the [NoteChat](https://arxiv.org/abs/2310.15959) dataset [Huggingface link](https://huggingface.co/datasets/akemiH/NoteChat). This dataset contains 167K pairs of real clinical notes extracted from [PMC-Patients](https://arxiv.org/abs/2202.13876) with generated patient-doctor conversations. 
 
 
 ### **Write your own clinical notes**
