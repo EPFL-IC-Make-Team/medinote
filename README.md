@@ -3,7 +3,7 @@
 >
 MediNote is a suite of open-source medical Large Language Models (LLMs) trained for **clinical note generation**.
 
-MediNote-7B and MediNote-13B are fine-tuned from the [Meditron](https://arxiv.org/abs/2311.16079) foundation model to generate clinical notes from doctor-patient conversations.
+[MediNote-7B](https://huggingface.co/AGBonnet/medinote-7b) and [MediNote-13B](https://huggingface.co/AGBonnet/medinote-13b) are fine-tuned from the [Meditron](https://arxiv.org/abs/2311.16079) foundation model to generate clinical notes from doctor-patient conversations.
 
 ### Architecture
 
