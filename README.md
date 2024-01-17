@@ -1,19 +1,12 @@
-## Automated Clinical Notes
+<img src="figures/medinote.png" width="30%">
 
-This project is part of the [EPFL MAKE initiative for Generative AI](https://make.epfl.ch/projects/generative-ai). 
+### **MediNote**: Automatic Clinical Note Generation
 
-Our project aims to automate the process of writing clinical notes. Clinical notes are a summary of the patient-doctor interaction and are generally written by the doctor after the consultation. They are used for billing, communication between doctors, and as a reminder of the patient's history.
+MediNote is a suite of open-source medical Large Language Models (LLMs) fine-tuned for clinical note generation from the [Meditron](https://arxiv.org/abs/2311.16079) foundation model. 
 
+MediNote-7B and MediNote-13B are trained to generate clinical notes from doctor-patient conversations.
 
-Patient-doctor consultations are recorded as audio, which would be converted into a textual transcript by an out-of-the-box dialogue-based Speech-To-Text model, e.g. [Google Cloud API](https://cloud.google.com/speech-to-text/docs/multiple-voices).
-
-We train a Large Language Model (LLM) to generate the clinical note from the dialogue transcript in 2 steps. 
-
-1. **Summarize**: From the dialogue transcript, extract relevant features to create a patient summary, outlining the patient's medical history, current symptoms, and the doctor's diagnosis. 
-2. **Generate**: From the patient summary and samples of the clinician's own notes, generate the clinical note.
-
-<img src="figures/pipeline.png" width="100%">
-
+<img src="figures/model_pipeline.pdf" width="100%">
 
 #### *Meditron*: Base model
 For both of these tasks, we will fine-tune [Meditron](https://huggingface.co/epfl-llm/meditron-70b), a version of Llama-2-13B whose pre-training was extended to PubMed articles, abstracts and clinical practice guidelines. **Note**: *Whether we fine-tune two separate versions (one for each task) or a single version for both tasks is still to be determined.*
@@ -94,3 +87,8 @@ python utils/eval.py \
     --path data/generated/notes.jsonl \
     --score_types all
 ```
+
+
+### Acknowledgments
+
+This project is part of the [EPFL MAKE initiative for Generative AI](https://make.epfl.ch/projects/generative-ai). 
