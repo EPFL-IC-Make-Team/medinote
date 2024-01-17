@@ -19,6 +19,7 @@ from utils.chat import chat_gpt_4_turbo
 from utils.generate import extract
 
 DATA_DIR = 'data'
+os.makedirs(DATA_DIR, exist_ok=True)
 for folder in ['summaries', 'summarizer', 'generator', 'direct']:
     os.makedirs(os.path.join(DATA_DIR, folder), exist_ok=True)
 
