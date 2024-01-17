@@ -1,14 +1,30 @@
 <img src="figures/medinote.png" width="30%">
 
 >
-MediNote is a suite of open-source medical Large Language Models (LLMs) trained for **automated clinical note generation**. 
+MediNote is a suite of open-source medical Large Language Models (LLMs) trained for **clinical note generation**.
 
 MediNote-7B and MediNote-13B are fine-tuned from the [Meditron](https://arxiv.org/abs/2311.16079) foundation model to generate clinical notes from doctor-patient conversations.
 
-<img src="figures/model_pipeline.pdf" width="100%">
+### Architecture
 
-#### *Meditron*: Base model
-For both of these tasks, we will fine-tune [Meditron](https://huggingface.co/epfl-llm/meditron-70b), a version of Llama-2-13B whose pre-training was extended to PubMed articles, abstracts and clinical practice guidelines. **Note**: *Whether we fine-tune two separate versions (one for each task) or a single version for both tasks is still to be determined.*
+We fine-tune our models from [MediTron](https://arxiv.org/abs/2311.16079), variants of Llama-2 whose pre-training was extended to PubMed articles, abstracts and clinical practice guidelines. 
+
+
+
+
+
+####
+
+<p align="center">
+    <img src="figures/model_pipeline.png" width="80%"> 
+</p>
+
+### Fine-tuning data
+
+<p align="center">
+    <img src="figures/data_pipeline.png" width="80%"> 
+</p>
+
 
 
 #### *NoteChat*: Fine-tuning data
@@ -66,15 +82,40 @@ dataset = load_dataset("AGBonnet/augmented-clinical-notes")
 
 You can fine-tune your own MediNote-7B by loading the [MediTron-7B](https://huggingface.co/epfl-llm/meditron-70b) from Huggingface and using the [Megatron-LLM](https://github.com/epfLLM/Megatron-LLM) distributed trainer code. Note that the MediTron-13B we used as base for MediNote-13B is not publicly available. See the documentation for a detailed description of the training procedure. 
 
-Finally, you can run the full inference for all models using `infer.sh`: 
+<p align="center">
+    <img src="figures/eval_pipeline.png" width="80%"> 
+</p>
+
+Finally, you can run the full inference for all models shown above using `infer.sh`: 
 
 ```bash
 ./utils/infer.sh all
 ```
 
+
 Once inference is done, you can evaluate generated patient summaries using the `eval.ipynb` notebook.
+
+### Supplementary material
+
+Here is the template we used to generate patient summaries from the NoteChat dataset (available in JSON format in `generation/templates/template_definitions.json`)
+<p align="center">
+    <img src="figures/template.png" width="80%"> 
+</p>
+
+Here are the prompts used for training and inference:
+<p align="center">
+    <img src="figures/prompts.png" width="80%"> 
+</p>
 
 ### Acknowledgments
 
 This project is a contribution to the [2023 MAKE Initiative for Generative AI](https://make.epfl.ch/projects/generative-ai) at the Swiss Federal Institute of Technology (EPFL). This project was initiated and funded by Prof. Antoine Bosselut of NLP lab and Prof Martin Jaggi of MLO lab. 
 We also thank Alexandre Sallinen for his advice on chaining specialized LLMs and Prof. Mary-Anne Hartley for her advice on the appropriate template for medical patient summaries. 
+
+### Citation
+
+If you use this code or our models, please cite the following paper:
+
+```
+ADD PAPER
+```
