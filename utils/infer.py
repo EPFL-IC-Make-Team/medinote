@@ -100,10 +100,11 @@ MODELS_TO_INPUT = {
     'meditron-13b-direct-trunc' : 'conversation',
     'meditron-7b-generator' : 'pred_summary_7b',
     'meditron-13b-generator' : 'pred_summary_13b',
-    'llama-2-7b-chat' : 'conversation',
-    'llama-2-13b-chat' : 'conversation',
+    'llama-2-7b-direct' : 'conversation',
+    'llama-2-13b-direct' : 'conversation',
     'mistral-7b-direct' : 'conversation',
     'gpt3-direct' : 'conversation',
+    'gpt4-direct' : 'conversation',
     'gpt3-generator-gpt' : 'summary',
     'gpt3-generator-7b' : 'pred_summary_7b',
     'gpt3-generator-13b' : 'pred_summary_13b',
@@ -118,10 +119,11 @@ MODELS_TO_OUTPUT = {
     'meditron-13b-direct-trunc' : 'pred_direct_13b',
     'meditron-7b-generator' : 'pred_note_7b',
     'meditron-13b-generator' : 'pred_note_13b',
-    'llama-2-7b-chat' : 'pred_direct_llama-7b',
-    'llama-2-13b-chat' : 'pred_direct_llama-13b',
+    'llama-2-7b-direct' : 'pred_direct_llama-7b',
+    'llama-2-13b-direct' : 'pred_direct_llama-13b',
     'mistral-7b-direct' : 'pred_direct_mistral-7b',
     'gpt3-direct' : 'pred_direct_gpt3',
+    'gpt4-direct' : 'pred_direct_gpt4',
     'gpt3-generator-gpt' : 'pred_note_gpt3-gold',
     'gpt3-generator-7b' : 'pred_note_gpt3-7b',
     'gpt3-generator-13b' : 'pred_note_gpt3-13b',
@@ -136,10 +138,11 @@ MODELS_TO_MODE = {
     'meditron-13b-direct-trunc' : 'direct',
     'meditron-7b-generator' : 'generator',
     'meditron-13b-generator' : 'generator',
-    'llama-2-7b-chat' : 'direct',
-    'llama-2-13b-chat' : 'direct',
+    'llama-2-7b-direct' : 'direct',
+    'llama-2-13b-direct' : 'direct',
     'mistral-7b-direct' : 'direct',
     'gpt3-direct' : 'direct-gpt',
+    'gpt4-direct' : 'direct-gpt',
     'gpt3-generator-gpt' : 'generator-gpt-gold',
     'gpt3-generator-7b' : 'generator-gpt',
     'gpt3-generator-13b' : 'generator-gpt',
@@ -188,7 +191,7 @@ def combine(input_path, output_path):
 
     for name, df in files[1:]:
         common_columns = list(set.intersection(set(combined_df.columns), set(df.columns)))
-        combined_df = pd.merge(combined_df, df.dropna(), on=common_columns, how='inner')
+        combined_df = pd.merge(combined_df, df.dropna(), on=common_columns, how='outer')
 
     if len(combined_df) < len_:
         raise ValueError(f'Combined dataframe has less rows than the first dataframe.')
@@ -388,7 +391,6 @@ def infer_openai(input_path,
             temperature = temperature
         )
         sub_batch_df[output_key] = answers
-        sub_batch_df['model_name'] = openai_model
         sub_batch_df.drop(columns = ['messages'], inplace = True)
         gen_df = pd.concat([gen_df, sub_batch_df], ignore_index = True)
         save_file(gen_df, output_path, mode='w')
