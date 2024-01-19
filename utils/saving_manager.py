@@ -5,7 +5,7 @@ import numpy as np
 
 SUMMARY_EVALUATION_STEPS = {'create eval directory' : 'tbd', 'flatten and match dicts' : 'tbd', 'clean dicts and counts' : 'tbd', 'summary_statistics' : 'tbd', 'scores' : 'tbd', 'pairs_idx' : 'tbd' ,'eval_by_sample' : 'tbd', 'eval_by_key' : 'tbd'}
 NOTE_EVALUATION_STEPS = {'create eval directory' : 'tbd', 'scores' : 'tbd'}
-ELO_RANKING_STEPS = {'create eval directory' : 'tbd', 'build_sub_batch' : 'tbd', 'scores' : 'tbd', 'compute elos' : 'tbd' }
+ELO_RANKING_STEPS = {'create eval directory' : 'tbd', 'pairs_idx' : 'tbd', 'scores' : 'tbd', 'compute elos' : 'tbd' }
 
 class EvalSaving():
     def __init__(self, steps ,path, save_path = None):
@@ -21,7 +21,7 @@ class EvalSaving():
             print(f"Progress: {self.progress_dict}")
         else:
             os.makedirs(save_path)
-            print("Creating Evaluation directory and progress monitoring")
+            print("Creating Evaluation directory and progress monitoring") 
             self.progress_dict = steps.copy()
             self.progress_dict['create eval directory'] = 'done'
             with open(f"{save_path}/progress", 'w') as f:

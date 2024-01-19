@@ -173,6 +173,18 @@ if [ "$1" == "gpt3-generator-13b" ] || [ "$1" == "all" ]; then
         --verbose $VERBOSE
 fi
 
+#Baseline GPT-4 (from API) (as reference)
+if [ "$1" == "gpt4-direct" ] || [ "$1" == "all" ]; then
+    python3 utils/infer.py \
+        --model_name gpt4-direct \
+        --input_path $INPUT_PATH \
+        --output_path /pure-mlo-scratch/make_project/data/inference/gpt4-direct.jsonl \
+        --train_path /pure-mlo-scratch/make_project/data/raw/summaries_full_train.jsonl \
+        --num_samples $NUM_SAMPLES \
+        --mode direct-gpt \
+        --shots 0 \
+        --verbose $VERBOSE
+fi
 
 # BASELINE: LLama-2 (7B/13B) (from local weights)
 if [ "$1" == "llama-2-7b-direct"  ] || [  "$1" == "all" ]; then

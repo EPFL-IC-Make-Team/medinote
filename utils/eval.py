@@ -24,11 +24,12 @@ import numpy as np
 import argparse
 from evaluate import load
 from multielo import MultiElo, Player
-import matplotlib.pyplot as plt
 import sys
 import os
 import json
 from tqdm import tqdm
+from itertools import combinations
+import random
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 
@@ -39,24 +40,44 @@ BLEU_SCORER = load("bleu")
 NONE_MATCH  = "None_Match"
 NO_SUCH_KEY = "no_such_key"
 NONE_FIELD = "None"
-ALL_SCORE_TYPES = ['bleu', 'rouge', 'bert', 'gpt_score']
+
+SUMMARY_SCORE_TYPES = ['bleu', 'rouge', 'bert', 'gpt_similarity_score']
+
+NOTE_SPECIFIC_SCORE_TYPES = [f"gpt_{score_type}_score" for score_type in ["clarity", "coherence", "factuality"]]
+NOTE_ALL_SCORE_TYPES = SUMMARY_SCORE_TYPES + NOTE_SPECIFIC_SCORE_TYPES
+
 ROUGE_SUB_SCORES = ['rouge1', 'rouge2',	'rougeL', 'rougeLsum']
 
-ALL_SCORE_TYPES_OUTPUT = [score for score in ALL_SCORE_TYPES if score != 'rouge'] + ROUGE_SUB_SCORES
+ALL_NOTES_SCORE_TYPES_OUTPUT = [score for score in NOTE_ALL_SCORE_TYPES if score != 'rouge'] + ROUGE_SUB_SCORES
+ALL_SUMMARIES_SCORE_TYPES_OUTPUT = [score for score in SUMMARY_SCORE_TYPES if score != 'rouge'] + ROUGE_SUB_SCORES
+
+ALL_SUMMARIES_SCORE_TYPES_OUTPUT_MEAN = [f"mean_{score}" for score in ALL_SUMMARIES_SCORE_TYPES_OUTPUT]
 
 COUNTS_TYPES = ['missing_keys_count', 'extra_keys_count', 'common_none_count',  
                 'gold_none_count', 'pred_none_count', 'common_non_none', 'all_keys_count']
 KEY_MISMATCH_TYPE = ['gold_none_keys', 'pred_none_keys', 'missing_keys']
-#MODELS_TO_COLUMN = {'our_model': 'pred_note', 'gpt_3': 'pred_note_gpt3', 'our_model_direct': 'pred_direct', 'gold' : 'data'}
-from itertools import combinations
 
 EVAL_DIR = 'evaluation'
+
 os.makedirs(EVAL_DIR, exist_ok=True)
+
+NOTE_MODELS = [model for model in MODELS_TO_MODE.keys() if 'summarizer' not in MODELS_TO_MODE[model] ]
+
+SUMMARIZER_MODELS = [model for model in MODELS_TO_MODE.keys() if 'summarizer' in MODELS_TO_MODE[model]]
+
+ELO_MODELS = NOTE_MODELS.copy()
+
+ELO_MODELS.remove('meditron-7b-generator-gold')
+ELO_MODELS.remove('meditron-13b-generator-gold')
+ELO_MODELS.remove('gpt4-direct')
+ELO_MODELS.remove('gpt3-generator-gpt')
+ELO_MODELS.remove('gpt3-generator-13b')
+ELO_MODELS.remove('gpt3-generator-7b')
 
 # ----------------------- 0 - Prepare Evaluation inputs ----------------------- #
 
 def save_evaluation_input(eval_input_filename, inference_df, pred_data, gold_data):
-    eval_input = inference_df[['idx', gold_data, pred_data]].dropna()
+    eval_input = inference_df[['idx', gold_data, pred_data, 'conversation']].dropna()
     eval_input = eval_input.rename(columns={gold_data: 'gold', pred_data: 'pred'})
     if gold_data == 'summary': #post processing of summaries
         for key in ['gold', 'pred']:
@@ -71,40 +92,77 @@ def build_evaluation_inputs(combined_inferences_path, eval_input_dir_path = EVAL
         if model not in MODELS_TO_MODE.keys():
             raise ValueError(f"Model {model} is not valid. Please choose between {MODELS_TO_MODE.keys()}.")
         save_evaluation_input(f'{eval_input_dir_path}/{model}_evaluation_input.jsonl', combined_inference, MODELS_TO_OUTPUT[model], KEYS[MODELS_TO_MODE[model]]['gold'])
+    
+    save_elo_inputs('elo_inputs.jsonl', combined_inference)
 
-    models = [model for model in models if 'summarizer' not in model] + ['gold'] 
-    save_elo_inputs('elo_inputs.jsonl', combined_inference, models)
-
-def save_elo_inputs(output_filename, inference_sample, models_to_compare):
+def save_elo_inputs(output_filename, inference_sample, models_to_compare = ELO_MODELS):
     #Selecting columns to keep
     for model in models_to_compare:
         if 'summarizer' in model:
             raise ValueError("Summarizer cannot be used for Elo ranking.")
 
     if len(models_to_compare) >=2:
-        outputs_notes = inference_sample[['idx','data'] + [MODELS_TO_OUTPUT[model] for model in models_to_compare if model != 'gold']].dropna()
+        outputs_notes = inference_sample[['idx'] + [MODELS_TO_OUTPUT[model] for model in models_to_compare]].copy()
+        outputs_notes.replace({None: np.nan, '': np.nan}, inplace=True)
         
         #renaming columns
-        outputs_notes = outputs_notes.rename(columns={MODELS_TO_OUTPUT[model]: model for model in models_to_compare if model != 'gold'})
-        outputs_notes = outputs_notes.rename(columns={'data': 'gold'})
-        
-        #Possible pair combinations:
-        model_pairs = list(combinations(models_to_compare, 2))
-        print(model_pairs)
-
+        outputs_notes = outputs_notes.rename(columns={MODELS_TO_OUTPUT[model]: model for model in models_to_compare})
+        outputs_notes.index = outputs_notes['idx']
         #Creating a dataframe with all possible pairs
-        all_pairs_df = pd.DataFrame()
-        all_pairs_df['modelA'] = [pair[0] for pair in model_pairs]
-        all_pairs_df['modelB'] = [pair[1] for pair in model_pairs]
-        all_pairs_df['idx'] = [outputs_notes['idx'].tolist() for _ in range(len(model_pairs))] 
-        all_pairs_df['noteA'] = [outputs_notes[model].tolist() for model in all_pairs_df['modelA']]
-        all_pairs_df['noteB'] = [outputs_notes[model].tolist() for model in all_pairs_df['modelB']]
+        nb_comparison = 4
+        np.random.seed(42)
 
-        all_pairs_df = all_pairs_df.explode(['idx', 'noteA', 'noteB'])
+        outputs_notes['possible_models'] = outputs_notes[models_to_compare].apply(lambda row: row.dropna().index.tolist(), axis=1)
 
+        outputs_notes['random_comparisons'] = outputs_notes['possible_models'].apply(lambda x: np.random.choice(x, size=min(nb_comparison*2, len(x)//2 * 2), replace=False))
+        
+        outputs_notes['random_comparisons'] = outputs_notes['random_comparisons'].apply(lambda x: [(x[i], x[i+1]) for i in range(0, len(x), 2)])
+    
+        outputs_notes['notes'] = outputs_notes.apply(lambda row: [(row[modelA], row[modelB]) for (modelA,modelB) in row['random_comparisons']] , axis=1)
+
+        all_pairs_df = outputs_notes[['idx', 'random_comparisons', 'notes']].copy()
+
+        all_pairs_df = all_pairs_df.explode(['random_comparisons', 'notes'])
+
+        all_pairs_df['modelA'] = all_pairs_df['random_comparisons'].apply(lambda x: x[0])
+        all_pairs_df['modelB'] = all_pairs_df['random_comparisons'].apply(lambda x: x[1])
+        all_pairs_df['noteA'] = all_pairs_df['notes'].apply(lambda x: x[0])
+        all_pairs_df['noteB'] = all_pairs_df['notes'].apply(lambda x: x[1])
+
+        all_pairs_df.drop(['random_comparisons', 'notes'], axis=1, inplace=True)
+        all_pairs_df = all_pairs_df.reset_index(drop=True)
         #Saving dataframe
         save_file(all_pairs_df, os.path.join(EVAL_DIR, output_filename))
 
+def aggregate_scores(dfs, score_types):
+    normalized_scores_dfs = [pd.DataFrame() for _ in dfs]
+    normalized_scores = [f"normalized_{metric}" for metric in score_types]
+    
+    for normalized_metric, metric in zip(normalized_scores, score_types):
+        if 'gpt' in metric:
+            for norm_df,df in zip(normalized_scores_dfs, dfs):
+                norm_df[normalized_metric] = df[metric].apply(lambda x: (x - 1) / 9)
+        else:
+            for norm_df,df in zip(normalized_scores_dfs, dfs):
+                norm_df[normalized_metric] = df[metric]
+
+    concatenated_norm_df = pd.concat(normalized_scores_dfs, axis=0)
+
+    means = concatenated_norm_df.mean(axis=0)
+    stds = concatenated_norm_df.std(axis=0)
+    rouge_deweight = means.index.to_series().apply(lambda x: 1/len(ROUGE_SUB_SCORES) if 'rouge' in x else 1)
+
+    weights = (1/(means * rouge_deweight))
+    
+    for norm_df in normalized_scores_dfs:
+        norm_df['aggregated_score'] = norm_df.multiply(weights, axis=1).sum(axis=1) / weights.sum()
+    
+    if 'missing_keys_prop' in dfs[0].columns:
+        for norm_df,df in zip(normalized_scores_dfs, dfs):
+            norm_df['aggregated_score'] = norm_df['aggregated_score'] * (1 - df['missing_keys_prop'] - df['pred_none_prop'] - df['gold_none_prop'])
+
+    return [norm_df['aggregated_score'].tolist() for norm_df in normalized_scores_dfs]
+    
 # ----------------------- 1 - Patient Summary evaluation ----------------------- #
 
 def matching_bert_scrorer(pairs):
@@ -273,12 +331,7 @@ def get_counts_and_clean_dict(flattened_dict):
 
     return counts, clean_flat_dict, key_mismatches
 
-
-    
-
-    
-
-def summary_statistics(golds, preds, saving_manager, score_types=['rouge', 'bleu', 'bert', 'gpt_score']):
+def summary_statistics(golds, preds, saving_manager, score_types):
     '''
     Given several (gold,pred) patient summaries pairs, flatten and match keys, 
     then compute matching scores & counts.
@@ -294,11 +347,7 @@ def summary_statistics(golds, preds, saving_manager, score_types=['rouge', 'bleu
     '''
     if golds.shape[0] != preds.shape[0]:
         raise ValueError("Gold and pred lists must be of same length.")
-    
-    if score_types == 'all' or 'gpt_rank' in score_types:
-        raise ValueError("GPT-4 ranking makes no sense for summary evaluation. \
-                         Please choose in 'bleu', 'rouge', 'bert' and 'gpt_score'.")
-    
+        
     # Flatten and match keys of each dict pair
 
     if saving_manager.get_progress_dict()['flatten and match dicts'] != 'done':
@@ -378,7 +427,7 @@ def summary_statistics(golds, preds, saving_manager, score_types=['rouge', 'bleu
     saving_manager.save_summary_statistics(stats_df)  
     return stats_df
 
-def summary_evaluation(model_name,save_path = None ,score_types=['bleu', 'rouge', 'bert', 'gpt_score']): 
+def summary_evaluation(model_name,save_path = None ,score_types= SUMMARY_SCORE_TYPES): 
     '''
     1 - Patient summary evaluation
     Run evaluation on a dataframe with 'gold' and 'pred' patient summaries. 
@@ -403,10 +452,6 @@ def summary_evaluation(model_name,save_path = None ,score_types=['bleu', 'rouge'
     '''
     path = f'evaluation/{model_name}_evaluation_input.jsonl'
 
-    if score_types == 'all' or 'gpt_rank' in score_types:
-        raise ValueError("GPT-4 ranking makes no sense for summary evaluation. \
-                         Please choose in 'bleu', 'rouge', 'bert' and 'gpt_score'.")
-
     print(f"Running summary evaluation with score types: {score_types}")
     print(f"Loading data...")
     dataset = load_file(path)
@@ -422,7 +467,9 @@ def summary_evaluation(model_name,save_path = None ,score_types=['bleu', 'rouge'
 
 
     new_score_types = score_types.copy()
-    if 'rouge' in score_types:
+    if score_types == 'rouge':
+        new_score_types = ROUGE_SUB_SCORES.copy()
+    elif 'rouge' in score_types:
         new_score_types.remove('rouge')
         new_score_types.extend(ROUGE_SUB_SCORES)
 
@@ -432,26 +479,9 @@ def summary_evaluation(model_name,save_path = None ,score_types=['bleu', 'rouge'
         for mean_metric, metric in zip(mean_scores, new_score_types):
             dataset[mean_metric] = stats[metric].apply(lambda x: np.mean(x))
 
-        normalized_scores = [f"normalized_{metric}" for metric in new_score_types]
-
-        for normalized_metric, mean_metric in zip(normalized_scores, mean_scores):
-            mean = dataset[mean_metric].mean()
-            std = dataset[mean_metric].std()
-            dataset[normalized_metric] = dataset[mean_metric].apply(lambda x: (x - mean) / std)
-            max = dataset[normalized_metric].max()
-            min = dataset[normalized_metric].min()
-            dataset[normalized_metric] = dataset[normalized_metric].apply(lambda x: (x - min) / (max - min))
-        
-        score_weights = {normalized_metric : 1/len(ROUGE_SUB_SCORES) if 'rouge' in normalized_metric else 1 for normalized_metric in normalized_scores}
-
-        dataset['aggregated_score'] = dataset[normalized_scores].multiply(dataset[normalized_scores].replace(score_weights)).sum(axis=1) / sum(score_weights.values())
-
-        dataset.drop(columns= normalized_scores, inplace=True)
-        
         for count_type in COUNTS_TYPES:
             dataset[count_type] = stats[count_type]
         
-        dataset['aggregated_score'] = dataset['aggregated_score'] * (dataset['common_none_count'] + dataset['common_non_none']) / dataset['all_keys_count']
         eval_saving.save_eval_by_sample(dataset)
     else:
         dataset = eval_saving.load_eval_by_sample()
@@ -487,9 +517,70 @@ def summary_evaluation(model_name,save_path = None ,score_types=['bleu', 'rouge'
     
     return dataset, score_by_keys
 
+def merge_summary_evaluation(model_names):
+    '''
+    Merge summary evaluations for several models into one dataframe.
+    Arguments:
+        - model_names (list of str): list of models to merge
+    Returns:
+        - merged_df (pd.DataFrame): merged dataframe with all models' evaluations means
+    '''
+
+    if any([model_name for model_name in model_names if 'summarizer' not in MODELS_TO_MODE[model_name]]):
+        raise ValueError("All models must be summarizers.")
+
+    eval_res_paths = [f'evaluation/{model_name}_eval_res/summary_eval_by_sample.jsonl' for model_name in model_names]
+    dfs = []
+    done_model_names = []
+    for path, name in zip(eval_res_paths, model_names):
+        try:
+            df = load_file(path).reset_index(drop=True)
+            dfs.append(df)
+            done_model_names.append(name)
+        except ValueError:
+            print(f"{path} not existing yet")
+    
+    for agg_score, df, eval_res_path in zip(aggregate_scores(dfs, ALL_SUMMARIES_SCORE_TYPES_OUTPUT_MEAN), dfs, eval_res_paths):
+        df['aggregated_score'] = agg_score
+        df.to_json(eval_res_path, orient='records', lines=True)
+
+    dfs_score_means = [df[ALL_SUMMARIES_SCORE_TYPES_OUTPUT_MEAN  + ['aggregated_score']].multiply(df['common_non_none'], axis=0).sum() / df['common_non_none'].sum() for df in dfs]
+
+    dfs_count_means = [(df[COUNTS_TYPES].divide(df['all_keys_count'], axis = 0)).mean() for df in dfs]
+
+    dfs_mean_key_count = [df['all_keys_count'].mean() for df in dfs]
+
+    result_df = pd.DataFrame({'model': done_model_names})
+    for score in ALL_SUMMARIES_SCORE_TYPES_OUTPUT_MEAN +  ['aggregated_score']:
+        result_df[score] = [df_mean.loc[score] for df_mean in dfs_score_means]
+    
+    for count in COUNTS_TYPES:
+        if count == 'all_keys_count':
+            result_df["mean_number_of_keys"] = dfs_mean_key_count
+        else:
+            result_df[f"{count}_prop"] = [df_mean.loc[count] for df_mean in dfs_count_means]
+    
+    eval_res_paths = [f'evaluation/{model_name}_eval_res/summary_eval_by_key.jsonl' for model_name in model_names]
+    dfs = []
+    done_model_names = []
+    for path, name in zip(eval_res_paths, model_names):
+        try:
+            df = load_file(path).reset_index(drop=True)
+            dfs.append(df)
+            done_model_names.append(name)
+        except ValueError:
+            print(f"{path} not existing yet")
+    
+    for agg_score, df, eval_res_path in zip(aggregate_scores(dfs, ALL_SUMMARIES_SCORE_TYPES_OUTPUT), dfs, eval_res_paths):
+        df['aggregated_score'] = agg_score
+        df.to_json(eval_res_path, orient='records', lines=True)
+
+    return result_df
+
+
 # ----------------------- 2 - Clinical note evaluation ----------------------- #
 
-def note_evaluation(model_name, save_path = None ,score_types=['bleu', 'rouge', 'bert', 'gpt_score']): 
+def note_evaluation(model_name, save_path = None ,score_types= NOTE_ALL_SCORE_TYPES): 
     '''
     2 - Clinical note evaluation
     Given 2 models’ answers (randomly mixed), ask GPT-4 to pick which one is the best and compute an ELO score. 
@@ -519,9 +610,7 @@ def note_evaluation(model_name, save_path = None ,score_types=['bleu', 'rouge', 
     else:
         scores = eval_saving.load_all_scores()
 
-    if score_types == 'all':
-        new_score_types = ALL_SCORE_TYPES.copy()
-    elif score_types == 'rouge':
+    if score_types == 'rouge':
         new_score_types = ROUGE_SUB_SCORES.copy()
     elif 'rouge' in score_types:
             new_score_types = score_types.copy()
@@ -532,27 +621,11 @@ def note_evaluation(model_name, save_path = None ,score_types=['bleu', 'rouge', 
     for metric in new_score_types:
         df[metric] = scores[metric]
 
-    normalized_scores = [f"normalized_{metric}" for metric in new_score_types]
-
-    for normalized_metric, metric in zip(normalized_scores, new_score_types):
-        mean = df[metric].mean()
-        std = df[metric].std()
-        df[normalized_metric] = df[metric].apply(lambda x: (x - mean) / std)
-        max = df[normalized_metric].max()
-        min = df[normalized_metric].min()
-        df[normalized_metric] = df[normalized_metric].apply(lambda x: (x - min) / (max - min))
-    
-    score_weights = {normalized_metric : 1/len(ROUGE_SUB_SCORES) if 'rouge' in normalized_metric else 1 for normalized_metric in normalized_scores}
-
-    df['aggregated_score'] = df[normalized_scores].multiply(df[normalized_scores].replace(score_weights)).sum(axis=1) / sum(score_weights.values())
-
-    df.drop(columns= normalized_scores, inplace=True)
-
     df.drop(['idxs', 'pairs'], axis=1, inplace=True)
 
     return df
 
-def elo_ranking(path, frac = 0.25 ,save_path = None):
+def elo_ranking(path ,save_path = None):
     ''' 
     Elo ranking for clinical note evaluation with GPT-4.
     Taken from https://portkey.ai/blog/comparing-llm-outputs-with-elo-ratings/
@@ -565,6 +638,9 @@ def elo_ranking(path, frac = 0.25 ,save_path = None):
     '''
     df = load_file(path)
 
+    if save_path is None:
+        save_path = path.replace('_inputs.jsonl', '_ranking_res')
+
     saving_manager = EvalSaving(ELO_RANKING_STEPS, path, save_path)
 
     if saving_manager.get_progress_dict()['compute elos'] == 'done':
@@ -574,33 +650,38 @@ def elo_ranking(path, frac = 0.25 ,save_path = None):
 
     model_names = list(set(list(df['modelA'].unique()) + list(df['modelB'].unique())))
 
-    if saving_manager.get_progress_dict()['build_sub_batch'] != 'done':
-        sub_df = df.sample(frac=frac).reset_index(drop=True).sort_values(by = 'idx')
-        sub_df['idxs'] = sub_df.index
-        saving_manager.save_sub_batch(sub_df)
+    if saving_manager.get_progress_dict()['pairs_idx'] != 'done':
+        df = df.sample(frac=1).reset_index(drop=True)
+        df['idxs'] = df.index
+        saving_manager.save_pairs_idx(df)
     else:
-        sub_df = saving_manager.load_sub_batch()
+        df = saving_manager.load_pairs_idx()
 
+    
     ranker = Scorer(saving_manager,['gpt_rank'])
 
-    ranks = ranker(sub_df)
+    ranks = ranker(df)
     ranks.drop(['pairs'], axis=1, inplace=True)
 
     players = {model: Player(model) for model in model_names}
-    elo = MultiElo()
-
+    elo = MultiElo(k_value = 1)
 
     # For each score given in df, compute Elo ranking
     for _, row in tqdm(ranks.iterrows(), total=ranks.shape[0], desc="Computing ELO rankings"):
+        
         winner = row['gpt_rank']
         if winner == "tie":
             result_order = [1, 1]
         else :
             result_order = [1,2]
-
-        winner = row['modelA'] if winner != 'noteB' else row['modelB']
-        loser = row['modelB'] if winner != 'noteB' else row['modelA']
-
+        
+        if winner != 'pred':
+            winner = row['modelA']
+            loser = row['modelB']
+        else:
+            winner = row['modelB']
+            loser = row['modelA']
+        
         new_ratings = elo.get_new_ratings([players[winner].rating, players[loser].rating],
                             result_order = result_order)
         players[winner].update_rating(new_ratings[0], row['idx'])
@@ -609,6 +690,10 @@ def elo_ranking(path, frac = 0.25 ,save_path = None):
     elo_histories = pd.DataFrame({'model' : model_names,
                                   'elo_history' : [players[model].rating_history for model in model_names]})
     
+
+    elo_histories['score_histories'] = elo_histories['elo_history'].apply(lambda x: [score[1] for score in x])
+    elo_histories['final_score'] = elo_histories['elo_history'].apply(lambda x: x[-1][1])
+
     saving_manager.save_elos(elo_histories)
 
     return elo_histories
@@ -618,7 +703,6 @@ def merge_note_evaluations(model_names):
     Merge note evaluations for several models into one dataframe.
     Arguments:
         - model_names (list of str): list of models to merge
-        - save_path (str): path to save the merged dataframe
     Returns:
         - merged_df (pd.DataFrame): merged dataframe with all models' evaluations means
     '''
@@ -634,15 +718,19 @@ def merge_note_evaluations(model_names):
         except ValueError:
             print(f"{path} not existing yet")
 
-    dfs_means = [df[ALL_SCORE_TYPES_OUTPUT].mean() for df in dfs]
+    for agg_score, df, eval_res_path in zip(aggregate_scores(dfs, ALL_NOTES_SCORE_TYPES_OUTPUT), dfs, eval_res_paths):
+        df['aggregated_score'] = agg_score
+        df.to_json(eval_res_path, orient='records', lines=True)
+
+    dfs_means = [df[ALL_NOTES_SCORE_TYPES_OUTPUT + ['aggregated_score']].mean() for df in dfs]
+    
 
     result_df = pd.DataFrame({'model': done_model_names})
-    for score in ALL_SCORE_TYPES_OUTPUT:
+    for score in ALL_NOTES_SCORE_TYPES_OUTPUT + ['aggregated_score']:
         result_df[score] = [df_mean.loc[score] for df_mean in dfs_means]
 
     return result_df   
-    
-    
+       
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', 

@@ -49,7 +49,6 @@ def delete_pickle_file(file_path: str):
 async def ask_chat(
         chat: Callable[[List[dict]], Awaitable[str]],   # Chat function to which messages are passed
         messages: List[dict],                           # "List" but corresponds to only one call
-        formatting: Callable[[str],Any],                 # Function which converts raw (text) chat output to required format
         temperature: float
         ) -> Awaitable[Any]:
     ''' 
@@ -62,15 +61,10 @@ async def ask_chat(
     '''
     try:
         answer =  await chat(messages = messages, temperature = temperature)
-        try:
-            formatted_answer = formatting(answer) 
-        except Exception as f:
-            raise ValueError(f"Wasn't answered in the right format {answer}")
-        return formatted_answer
+        return answer
     except ValueError as e:
         print(f"\nException occurred: {e}")
-        print(formatted_answer)
-        return f"Wrong format: {answer}"
+        return None
 
 async def openai_chat(
       messages : List[dict], 
@@ -157,7 +151,6 @@ async def dispatch_openai_requests(
         res = await ask_chat(
             chat = chat,
             messages= message,
-            formatting = formatting,
             temperature = temperature)
         nb_done += 1
         print(".", end = "")
@@ -169,6 +162,11 @@ async def dispatch_openai_requests(
         
     async_responses = [one_call(x) for x in messages_list] #multiple calls
     new_responses = await asyncio.gather(*async_responses)
+    try:
+        prev_res = [formatting(x) for x in prev_res]
+        new_responses = [formatting(x) for x in new_responses]
+    except Exception as e:
+        print(f"Formatting failed: {e}")
 
     return prev_res + new_responses
 
